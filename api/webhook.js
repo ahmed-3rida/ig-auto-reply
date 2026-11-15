@@ -1,6 +1,9 @@
-// Instagram comment auto-reply webhook (Vercel Function).
-// Each post (video) has its own link in the settings panel. Any comment on an enabled post
-// gets a public reply + a private DM with that post's link (optionally only if it contains a keyword).
+// Instagram auto-reply webhook (Vercel Function) — same logic as the old viaSocket flows:
+//
+// 1) Comment on an enabled post  -> public reply (random) + private reply with a "Link" postback button
+//                                    whose payload is that post's link.
+// 2) They tap "Link" (postback)    -> if they follow you: ❤️ react + message with a URL button to the link.
+//                                    if not: "follow first" message + a "Following" button to try again.
 import crypto from "node:crypto";
 import { loadConfig } from "../lib/config.js";
 
@@ -25,6 +28,10 @@ export function matchesKeyword(text, keywords) {
   return list.some((k) => t.includes(k));
 }
 
+export const pick = (list, fallback = "") => (Array.isArray(list) && list.length ? list[Math.floor(Math.random() * list.length)] : fallback);
+const fill = (template, vars) => String(template ?? "").replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? "");
+const isLink = (s) => /^https?:\/\/\S+$/i.test(String(s ?? "").trim());
+
 function validSignature(raw, header) {
   const secret = env("APP_SECRET");
   if (!secret) return true; // allow local testing without secret
@@ -34,21 +41,22 @@ function validSignature(raw, header) {
   return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 
-async function callGraph(path, body) {
+async function graph(method, path, body) {
   const res = await fetch(`${GRAPH()}${path}`, {
-    method: "POST",
+    method,
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${env("IG_ACCESS_TOKEN")}` },
-    body: JSON.stringify(body),
+    body: body ? JSON.stringify(body) : undefined,
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) console.error("Graph error", path, res.status, JSON.stringify(data));
+  if (!res.ok) console.error("Graph error", method, path, res.status, JSON.stringify(data));
   return { ok: res.ok, data };
 }
 
-function fill(template, vars) {
-  return template.replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? "");
-}
+const buttonTemplate = (text, buttons) => ({
+  attachment: { type: "template", payload: { template_type: "button", text: String(text).slice(0, 640), buttons } },
+});
 
+// ---------- 1) comments ----------
 export async function handleComment(value, ownerId, cfg) {
   const commentId = value?.id;
   const text = value?.text ?? "";
@@ -60,17 +68,61 @@ export async function handleComment(value, ownerId, cfg) {
   if (!cfg.enabled) return "disabled";
 
   const post = cfg.posts?.[mediaId];
-  if (!post || !post.enabled || !post.link) return "post-not-configured";
+  if (!post || !post.enabled || !isLink(post.link)) return "post-not-configured";
   if (!matchesKeyword(text, post.keyword)) return "no-keyword";
 
   const vars = { username: from.username ?? "", link: post.link };
-  const replyText = fill(post.reply || cfg.defaultReply || "", vars);
-  const dmText = fill(post.dm || cfg.defaultDm || "{link}", vars);
+  const replyText = fill(post.reply || pick(cfg.commentReplies), vars);
+  const dmText = fill(post.dm || pick(cfg.dmMessages, "Tap LINK 👇"), vars);
 
-  // Private reply (DM) tied to the comment, then a public reply on the comment.
-  const dm = await callGraph(`/me/messages`, { recipient: { comment_id: commentId }, message: { text: dmText } });
-  const reply = replyText ? await callGraph(`/${commentId}/replies`, { message: replyText }) : { ok: true };
-  return `dm:${dm.ok} reply:${reply.ok}`;
+  // Public reply first, then the private reply with the "Link" postback button (payload = the link).
+  const reply = replyText ? await graph("POST", `/${commentId}/replies`, { message: replyText }) : { ok: true };
+  const dm = await graph("POST", `/me/messages`, {
+    recipient: { comment_id: commentId },
+    message: buttonTemplate(dmText, [{ type: "postback", title: cfg.linkButtonTitle || "Link", payload: post.link }]),
+  });
+  return `reply:${reply.ok} dm:${dm.ok}`;
+}
+
+// ---------- 2) button taps (postbacks) ----------
+export async function userFollows(igsid) {
+  const r = await graph("GET", `/${igsid}?fields=is_user_follow_business`);
+  if (!r.ok) return null; // unknown
+  return r.data?.is_user_follow_business === true;
+}
+
+export async function handlePostback(event, ownerId, cfg) {
+  const senderId = event?.sender?.id;
+  const payload = String(event?.postback?.payload ?? "").trim();
+  if (!senderId || senderId === ownerId) return "own";
+  if (!isLink(payload)) return "not-ours"; // only our Link/Following buttons carry a URL
+  if (!cfg.enabled) return "disabled";
+
+  let follows = true;
+  if (cfg.followGate) {
+    const f = await userFollows(senderId);
+    follows = f !== false; // if Instagram can't tell us, don't block the user
+  }
+
+  if (follows) {
+    const mid = event.postback?.mid;
+    if (cfg.reactOnLink && mid) {
+      await graph("POST", `/me/messages`, { recipient: { id: senderId }, sender_action: "react", payload: { message_id: mid, reaction: "love" } });
+    }
+    const r = await graph("POST", `/me/messages`, {
+      recipient: { id: senderId },
+      message: buttonTemplate(pick(cfg.followerReplies, "👇"), [{ type: "web_url", title: cfg.urlButtonTitle || "Open", url: payload }]),
+    });
+    return `link-sent:${r.ok}`;
+  }
+
+  const r = await graph("POST", `/me/messages`, {
+    recipient: { id: senderId },
+    message: buttonTemplate(pick(cfg.nonFollowerMessages, "Follow first 🙏"), [
+      { type: "postback", title: cfg.followingButtonTitle || "Following", payload },
+    ]),
+  });
+  return `ask-follow:${r.ok}`;
 }
 
 // Meta verification handshake.
@@ -95,9 +147,12 @@ export async function POST(request) {
   const cfg = await loadConfig();
   const results = [];
   for (const entry of body.entry ?? []) {
+    const ownerId = entry.id;
     for (const change of entry.changes ?? []) {
-      if (change.field !== "comments") continue;
-      results.push(await handleComment(change.value, entry.id, cfg));
+      if (change.field === "comments") results.push(await handleComment(change.value, ownerId, cfg));
+    }
+    for (const ev of entry.messaging ?? []) {
+      if (ev.postback && !ev.message?.is_echo) results.push(await handlePostback(ev, ownerId, cfg));
     }
   }
   console.log("processed", results);
