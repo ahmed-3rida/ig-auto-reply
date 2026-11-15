@@ -1,0 +1,6 @@
+{
+  "name": "ig-auto-reply",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=20" }
+}
