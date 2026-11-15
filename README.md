@@ -1,73 +1,41 @@
-# رد تلقائي على تعليقات انستجرام
+# لوحة لينكات الفيديوهات (لـ viaSocket)
 
-نفس طريقة الـ viaSocket القديمة، بس على سيرفرك ومن لوحة إعدادات:
+المشروع ده بقى لوحة بسيطة بتحدد **لكل فيديو اللينك بتاعه**، وviaSocket هو اللي بيرد على الكومنتات ويبعت الرسايل.
 
-1. حد يكتب **أي كومنت** على فيديو مفعّل ← رد عام عشوائي على الكومنت + رسالة خاصة عشوائية فيها زرار **Link**.
-2. يدوس **Link**:
-   - لو **متابعك** ← ❤️ على رسالته + رسالة فيها زرار «دوس هنا» بيفتح **لينك الفيديو ده**.
-   - لو **مش متابعك** ← «اعملي فولو عشان أعرف ابعتلك اللينك» + زرار **Following** يجرب تاني بعد ما يعمل فولو.
+```
+كومنت على فيديو ──► viaSocket «Comment Reply v2»
+                      └─ بيسأل اللوحة: /api/link?media_id=...
+                           ├─ فيه لينك  → رد على الكومنت + رسالة فيها زرار Link
+                           └─ مفيش       → ولا حاجة
+دوس على Link ──► viaSocket «Link Button v2 (follow check)»
+                      ├─ متابع      → ❤️ + زرار Open Link 🔗
+                      └─ مش متابع  → «Follow first» + زرار Following
+```
 
-كل الرسايل (القوايم العشوائية) وأسماء الزراير ولينك كل فيديو بتتعدّل من **لوحة الإعدادات** على رابط موقعك.
-تعليقاتك إنت بيتم تجاهلها.
+## استخدام اللوحة
+1. افتح رابط الموقع (مثلاً `https://ig-auto-reply-theta.vercel.app`) واكتب كلمة السر (قيمة `VERIFY_TOKEN` في Vercel).
+2. لكل فيديو: فعّل «رد تلقائي» وحط اللينك ← **حفظ**. التغيير بيشتغل خلال أقل من دقيقة.
+3. الزرار اللي فوق بيوقف كل اللينكات مرة واحدة (viaSocket مش هيرد على حد).
 
-> ⚠️ وقّف فلوهات viaSocket قبل ما تشغّل ده، وإلا الناس هتاخد ردين.
+نصوص الردود والرسايل والأزرار بتتعدّل من viaSocket نفسه.
 
----
-
-## 1) حوّل حساب انستا لـ Professional
-Settings and activity ← Account type and tools ← Switch to professional account ← **Creator**.
-
-## 2) اعمل تطبيق Meta
-1. ادخل https://developers.facebook.com/apps ← **Create App**.
-2. اختار use case: **Manage messaging & content on Instagram**.
-3. من **Instagram ← API setup with Instagram login**:
-   - دوس **Add account** واعمل login بحساب انستا بتاعك.
-   - دوس **Generate token** وانسخ الـ token (ده `IG_ACCESS_TOKEN`).
-4. من **App settings ← Basic** انسخ **Instagram app secret** (ده `APP_SECRET`).
-
-## 3) ارفع السيرفر على Vercel
-1. ارفع الفولدر ده على GitHub، واعمل Import له على https://vercel.com/new.
-2. في **Environment Variables** حط القيم دي:
-
-| الاسم | القيمة |
+## الملفات
+| الملف | الوظيفة |
 |---|---|
-| `IG_ACCESS_TOKEN` | الـ token من خطوة 2 |
-| `APP_SECRET` | الـ app secret من خطوة 2 |
-| `VERIFY_TOKEN` | أي كلمة سر تختارها، مثلاً `my-secret-123` |
-| `COMMENT_REPLY` | (اختياري) الرد على التعليق |
-| `DM_MESSAGE` | (اختياري) نص الرسالة الخاصة، وتقدر تكتب فيه `{username}` و `{link}` |
-| `IG_USERNAME` | يوزر حسابك (عشان النظام ميردش على نفسه) |
-| `ENABLED` | `true` للتشغيل، و `false` للإيقاف |
-| `IG_USER_ID` | ID حسابك على انستا (اختياري) |
+| `index.html` | اللوحة |
+| `api/link.js` | viaSocket بيجيب منه لينك الفيديو (من غير باسورد، بيرجّع اللينك بس) |
+| `api/admin.js` | API اللوحة (بكلمة السر) |
+| `lib/config.js` | حفظ الإعدادات على Vercel Blob + لينكات الفيديوهات القديمة |
+| `privacy.html` | صفحة الخصوصية |
 
-3. اعمل Deploy، وهيطلعلك رابط زي `https://ig-auto-reply.vercel.app`.
-
-## 4) اربط الـ Webhook
-في تطبيق Meta ← **Instagram ← API setup with Instagram login ← Configure webhooks**:
-(لازم يكون مشترك في **comments** و **messaging_postbacks**)
-- **Callback URL:** `https://<رابطك>.vercel.app/api/webhook`
-- **Verify token:** نفس قيمة `VERIFY_TOKEN`
-- دوس **Verify and save**، وبعدين فعّل (Subscribe) حقل **comments**.
-- وتحت عند الحساب، فعّل **Webhook subscription**.
-
-## 5) لوحة الإعدادات (رابط لكل فيديو)
-افتح رابط موقعك نفسه (مثلاً `https://ig-auto-reply-theta.vercel.app`) واكتب كلمة السر (نفس `VERIFY_TOKEN`).
-- هتلاقي كل بوستاتك والريلز بالصور.
-- لكل فيديو: فعّل «رد تلقائي» وحط **الرابط بتاعه** ← **حفظ الإعدادات**.
-- أي كومنت على الفيديو المفعّل هياخد رد + رسالة خاصة فيها رابط الفيديو ده بالذات.
-- اختياري: كلمة معينة (لو عايز الرد يبقى على كومنتات فيها الكلمة دي بس)، أو رسالة/رد مخصوص للفيديو.
-- الزرار اللي فوق يوقف النظام كله.
-
-**التخزين:** الإعدادات بتتحفظ على Vercel Blob. من Vercel ← Storage ← Create ← Blob، واربطه بالمشروع (هيضيف `BLOB_READ_WRITE_TOKEN` لوحده)، وبعدين Redeploy.
-
-## 6) جرّب
-فعّل فيديو من اللوحة، وخلي **حساب تاني** يعلّق عليه. المفروض الرسالة الخاصة والرد يوصلوا في ثواني.
-لو موصلش حاجة، افتح Vercel ← Logs وشوف فيه `Graph error` ولا لأ.
-
-> لو الـ Webhook مش بيوصل والتطبيق في وضع Development، غيّر التطبيق لـ **Live**. ممكن Meta تطلب Privacy Policy URL، وساعتها أي صفحة بسيطة هتنفع.
+## متغيرات Vercel
+| الاسم | ليه |
+|---|---|
+| `VERIFY_TOKEN` | كلمة سر اللوحة |
+| `IG_ACCESS_TOKEN` | عشان اللوحة تعرض بوستاتك بالصور |
+| `BLOB_READ_WRITE_TOKEN` | بيتضاف لوحده لما تربط Blob store |
 
 ## اختبار محلي
 ```bash
-node test.mjs
+npm install && node test.mjs
 ```
-(محتاج `npm install` الأول.)

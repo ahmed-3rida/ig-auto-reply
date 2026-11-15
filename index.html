@@ -4,55 +4,58 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
-<title>لوحة الرد التلقائي</title>
+<title>لينكات الفيديوهات</title>
 <style>
-:root{--bg:#f6f5fb;--card:#fff;--text:#1d1b26;--muted:#6b6880;--line:#e6e3f0;--accent:#6c3bd1;--accent-ink:#fff;--ok:#1f9d55;--err:#d64545;--field:#fbfaff}
-@media (prefers-color-scheme:dark){:root{--bg:#121118;--card:#1c1a24;--text:#ece9f6;--muted:#9a96ad;--line:#2d2a38;--accent:#9b74ff;--accent-ink:#120f1a;--ok:#4ade80;--err:#f87171;--field:#16141d}}
+:root{--bg:#f6f5fb;--card:#fff;--text:#1d1b26;--muted:#6b6880;--line:#e6e3f0;--accent:#6c3bd1;--accent-ink:#fff;--ok:#1f9d55;--ok-bg:#e7f6ee;--warn:#b26a00;--warn-bg:#fff4e0;--err:#d64545;--field:#fbfaff}
+@media (prefers-color-scheme:dark){:root{--bg:#121118;--card:#1c1a24;--text:#ece9f6;--muted:#9a96ad;--line:#2d2a38;--accent:#9b74ff;--accent-ink:#120f1a;--ok:#4ade80;--ok-bg:#16301f;--warn:#fbbf24;--warn-bg:#33270f;--err:#f87171;--field:#16141d}}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--text);font:15px/1.6 system-ui,-apple-system,"Segoe UI",Tahoma,sans-serif}
 .wrap{max-width:1100px;margin:0 auto;padding:20px 16px 110px}
 h1{font-size:22px;margin:0}
-h2{font-size:16px;margin:0 0 12px}
 .muted{color:var(--muted);font-size:13px}
 .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px}
-input[type=text],input[type=url],input[type=password],textarea{width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:9px;background:var(--field);color:var(--text);font:inherit}
-textarea{min-height:64px;resize:vertical}
-input:focus,textarea:focus{outline:2px solid var(--accent);outline-offset:-1px}
-label.f{display:block;font-size:13px;color:var(--muted);margin:10px 0 4px}
+input[type=text],input[type=url],input[type=password],input[type=search]{width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:9px;background:var(--field);color:var(--text);font:inherit}
+input:focus{outline:2px solid var(--accent);outline-offset:-1px}
+input.bad{border-color:var(--err)}
 button{font:inherit;cursor:pointer;border-radius:9px;border:1px solid var(--line);background:var(--card);color:var(--text);padding:8px 14px}
 button.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:600}
 button:disabled{opacity:.55;cursor:default}
-.top{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:16px}
-.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px;margin-top:14px}
-.post{display:flex;flex-direction:column;gap:6px;padding:0;overflow:hidden}
+.top{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.stats{display:flex;gap:10px;flex-wrap:wrap;margin:16px 0}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 14px;min-width:120px}
+.stat b{display:block;font-size:22px;line-height:1.2}
+.tools{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px}
+.tools input{max-width:260px}
+.filters{display:flex;gap:8px;flex-wrap:wrap}
+.filters button.active{border-color:var(--accent);color:var(--accent);font-weight:600}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px}
+.post{padding:0;overflow:hidden}
 .post .media{display:flex;gap:12px;padding:12px;align-items:flex-start}
 .post img,.post .noimg{width:84px;height:110px;object-fit:cover;border-radius:9px;background:var(--line);flex:none}
-.post .body{padding:0 12px 12px}
+.post .body{padding:0 12px 12px;display:flex;flex-direction:column;gap:8px}
 .post.on{border-color:var(--accent)}
 .cap{font-size:13px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
 .tag{display:inline-block;font-size:11px;padding:1px 7px;border-radius:99px;border:1px solid var(--line);color:var(--muted);margin-inline-end:6px}
+.pill{display:inline-block;font-size:12px;padding:2px 9px;border-radius:99px;font-weight:600}
+.pill.ok{background:var(--ok-bg);color:var(--ok)}.pill.warn{background:var(--warn-bg);color:var(--warn)}.pill.off{background:var(--line);color:var(--muted)}
+.row{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .switch{display:inline-flex;align-items:center;gap:8px;cursor:pointer;user-select:none;font-weight:600}
-.switch input{appearance:none;width:40px;height:22px;border-radius:99px;background:var(--line);position:relative;margin:0;cursor:pointer;transition:background .15s}
+.switch input{appearance:none;width:40px;height:22px;border-radius:99px;background:var(--line);position:relative;margin:0;cursor:pointer;transition:background .15s;flex:none}
 .switch input::after{content:"";position:absolute;top:3px;inset-inline-start:3px;width:16px;height:16px;border-radius:50%;background:#fff;transition:inset-inline-start .15s}
 .switch input:checked{background:var(--accent)}
 .switch input:checked::after{inset-inline-start:21px}
-details summary{cursor:pointer;color:var(--muted);font-size:13px;margin-top:8px}
 .bar{position:fixed;inset-inline:0;bottom:0;background:var(--card);border-top:1px solid var(--line);padding:12px 16px;display:flex;gap:12px;align-items:center;justify-content:center}
 .msg{font-size:14px}.msg.ok{color:var(--ok)}.msg.err{color:var(--err)}
 .login{max-width:380px;margin:12vh auto}
-.row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-@media (max-width:640px){.row{grid-template-columns:1fr}}
 .hide{display:none!important}
-.filters{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
-.filters button.active{border-color:var(--accent);color:var(--accent);font-weight:600}
+.banner{border-color:var(--err);margin:14px 0}
 a{color:var(--accent)}
-textarea.list{unicode-bidi:plaintext;text-align:start}
 </style>
 </head>
 <body>
 <div id="login" class="wrap login">
   <div class="card">
-    <h1>لوحة الرد التلقائي</h1>
+    <h1>لينكات الفيديوهات</h1>
     <p class="muted">اكتب كلمة السر (نفس قيمة <code>VERIFY_TOKEN</code> في Vercel).</p>
     <form id="loginForm">
       <input id="pw" type="password" autocomplete="current-password" placeholder="كلمة السر" required>
@@ -64,80 +67,48 @@ textarea.list{unicode-bidi:plaintext;text-align:start}
 <div id="app" class="wrap hide">
   <div class="top">
     <div>
-      <h1>لوحة الرد التلقائي</h1>
-      <div class="muted">فعّل الفيديو وحط الرابط بتاعه. أي كومنت عليه هياخد رد + رسالة خاصة فيها زرار، ولما يدوس عليه ياخد اللينك.</div>
+      <h1>لينكات الفيديوهات</h1>
+      <div class="muted">فعّل الفيديو وحط اللينك بتاعه. viaSocket بيرد على أي كومنت عليه ويبعت اللينك ده. الرسايل نفسها بتتعدّل من viaSocket.</div>
     </div>
-    <label class="switch"><input type="checkbox" id="enabled"> <span id="enabledLbl">النظام شغال</span></label>
+    <label class="switch"><input type="checkbox" id="enabled"> <span id="enabledLbl"></span></label>
   </div>
 
-  <div id="storageWarn" class="card hide" style="border-color:var(--err);margin-bottom:14px">
-    التخزين مش متوصل لسه — الإعدادات مش هتتحفظ. من Vercel ← Storage اعمل Blob store واربطه بالمشروع.
+  <div id="offBanner" class="card banner hide">الرد التلقائي متوقف دلوقتي — مفيش أي لينك هيتبعت لحد ما تشغّله تاني.</div>
+  <div id="storageWarn" class="card banner hide">التخزين مش متوصل — الإعدادات مش هتتحفظ.</div>
+
+  <div class="stats">
+    <div class="stat"><b id="stActive">0</b><span class="muted">فيديو شغال</span></div>
+    <div class="stat"><b id="stMissing">0</b><span class="muted">مفعّل من غير لينك</span></div>
+    <div class="stat"><b id="stLoaded">0</b><span class="muted">بوست ظاهر</span></div>
   </div>
 
-  <div class="card">
-    <h2>الخطوة 1 — لما حد يكتب كومنت</h2>
-    <div class="muted">كل سطر = رسالة. السيستم بيختار واحدة عشوائي كل مرة. تقدر تكتب <code>{username}</code> لاسم الشخص.</div>
-    <div class="row">
-      <div>
-        <label class="f" for="commentReplies">الرد العام على الكومنت</label>
-        <textarea id="commentReplies" class="list" dir="auto" rows="7"></textarea>
-      </div>
-      <div>
-        <label class="f" for="dmMessages">الرسالة الخاصة (معاها زرار)</label>
-        <textarea id="dmMessages" class="list" dir="auto" rows="7"></textarea>
-        <label class="f" for="linkButtonTitle">اسم الزرار</label>
-        <input type="text" id="linkButtonTitle" maxlength="20">
-      </div>
-    </div>
-  </div>
-
-  <div class="card" style="margin-top:14px">
-    <div class="top" style="margin:0 0 4px">
-      <h2 style="margin:0">الخطوة 2 — لما يدوس على الزرار</h2>
-      <div style="display:flex;gap:16px;flex-wrap:wrap">
-        <label class="switch"><input type="checkbox" id="followGate"> اللينك للمتابعين بس</label>
-        <label class="switch"><input type="checkbox" id="reactOnLink"> ❤️ على رسالته</label>
-      </div>
-    </div>
-    <div class="row">
-      <div>
-        <label class="f" for="followerReplies">لو متابعك: الرسالة اللي معاها اللينك</label>
-        <textarea id="followerReplies" class="list" dir="auto" rows="7"></textarea>
-        <label class="f" for="urlButtonTitle">اسم زرار اللينك</label>
-        <input type="text" id="urlButtonTitle" maxlength="20">
-      </div>
-      <div id="nonFollowerBox">
-        <label class="f" for="nonFollowerMessages">لو مش متابعك: رسالة «اعمل فولو»</label>
-        <textarea id="nonFollowerMessages" class="list" dir="auto" rows="7"></textarea>
-        <label class="f" for="followingButtonTitle">اسم زرار «عملت فولو»</label>
-        <input type="text" id="followingButtonTitle" maxlength="20">
-      </div>
-    </div>
-  </div>
-
-  <div class="top" style="margin-top:20px;margin-bottom:0">
-    <h2 style="margin:0">الفيديوهات والبوستات</h2>
+  <div class="tools">
+    <input type="search" id="search" placeholder="دوّر في الوصف...">
     <div class="filters">
       <button data-f="all" class="active">الكل</button>
-      <button data-f="on">المفعّل بس</button>
-      <button data-f="reel">الريلز بس</button>
+      <button data-f="on">الشغالين</button>
+      <button data-f="off">مش متفعّلين</button>
+      <button data-f="reel">الريلز</button>
     </div>
   </div>
+
   <div id="grid" class="grid"></div>
-  <div style="text-align:center;margin-top:16px"><button id="more" class="hide">تحميل المزيد</button></div>
+  <div style="text-align:center;margin-top:16px"><button id="more" class="hide">تحميل بوستات أقدم</button></div>
   <p id="mediaErr" class="msg err"></p>
 </div>
 
 <div id="bar" class="bar hide">
-  <button class="primary" id="save">حفظ الإعدادات</button>
-  <span id="saveMsg" class="msg"></span>
+  <button class="primary" id="save" disabled>حفظ</button>
+  <span id="saveMsg" class="msg muted">مفيش تعديلات</span>
 </div>
 
 <script>
 const $ = (s) => document.querySelector(s);
-let KEY = "", CFG = null, MEDIA = [], AFTER = null, FILTER = "all", dirty = false;
+let KEY = "", CFG = null, MEDIA = [], AFTER = null, FILTER = "all", QUERY = "", dirty = false;
 const store = { get(){ try { return sessionStorage.getItem("adm") || ""; } catch { return ""; } },
                 set(v){ try { sessionStorage.setItem("adm", v); } catch {} } };
+const isLink = (s) => /^https?:\/\/\S+$/i.test((s || "").trim());
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 
 async function api(path, opts = {}) {
   const res = await fetch(path, { ...opts, headers: { "x-admin-key": KEY, "Content-Type": "application/json", ...(opts.headers || {}) } });
@@ -153,8 +124,7 @@ async function login(pw) {
   CFG = d.config;
   $("#storageWarn").classList.toggle("hide", d.storage);
   $("#login").classList.add("hide"); $("#app").classList.remove("hide"); $("#bar").classList.remove("hide");
-  $("#enabled").checked = CFG.enabled; syncEnabledLbl();
-  fillSettings();
+  $("#enabled").checked = CFG.enabled !== false; syncEnabled();
   await loadMedia();
 }
 
@@ -163,32 +133,19 @@ $("#loginForm").addEventListener("submit", async (e) => {
   try { await login($("#pw").value); } catch (err) { $("#loginMsg").textContent = err.status === 401 ? "كلمة السر غلط" : err.message; }
 });
 
-function syncEnabledLbl(){ $("#enabledLbl").textContent = $("#enabled").checked ? "النظام شغال" : "النظام متوقف"; }
-$("#enabled").addEventListener("change", () => { syncEnabledLbl(); markDirty(); });
-const LISTS = ["commentReplies","dmMessages","followerReplies","nonFollowerMessages"];
-const TEXTS = ["linkButtonTitle","urlButtonTitle","followingButtonTitle"];
-const BOOLS = ["followGate","reactOnLink"];
-function fillSettings(){
-  LISTS.forEach(k => $("#"+k).value = (CFG[k] || []).join("\n"));
-  TEXTS.forEach(k => $("#"+k).value = CFG[k] || "");
-  BOOLS.forEach(k => $("#"+k).checked = CFG[k] !== false);
-  syncGate();
+function syncEnabled(){
+  const on = $("#enabled").checked;
+  $("#enabledLbl").textContent = on ? "الرد التلقائي شغال" : "الرد التلقائي متوقف";
+  $("#offBanner").classList.toggle("hide", on);
 }
-function readSettings(){
-  LISTS.forEach(k => CFG[k] = $("#"+k).value.split("\n").map(x => x.trim()).filter(Boolean));
-  TEXTS.forEach(k => CFG[k] = $("#"+k).value.trim());
-  BOOLS.forEach(k => CFG[k] = $("#"+k).checked);
-}
-function syncGate(){ $("#nonFollowerBox").style.opacity = $("#followGate").checked ? 1 : .45; }
-[...LISTS, ...TEXTS].forEach(k => $("#"+k).addEventListener("input", markDirty));
-BOOLS.forEach(k => $("#"+k).addEventListener("change", () => { syncGate(); markDirty(); }));
+$("#enabled").addEventListener("change", () => { CFG.enabled = $("#enabled").checked; syncEnabled(); markDirty(); });
 
 async function loadMedia() {
   $("#more").disabled = true; $("#mediaErr").textContent = "";
   try {
     const d = await api("/api/admin?action=media" + (AFTER ? "&after=" + encodeURIComponent(AFTER) : ""));
     MEDIA = MEDIA.concat(d.items); AFTER = d.after; render();
-  } catch (err) { $("#mediaErr").textContent = "مقدرتش أجيب البوستات: " + err.message; }
+  } catch (err) { $("#mediaErr").textContent = "مقدرتش أجيب البوستات من انستجرام: " + err.message; }
   $("#more").disabled = false; $("#more").classList.toggle("hide", !AFTER);
 }
 $("#more").addEventListener("click", loadMedia);
@@ -196,71 +153,92 @@ $("#more").addEventListener("click", loadMedia);
 document.querySelectorAll(".filters button").forEach(b => b.addEventListener("click", () => {
   FILTER = b.dataset.f; document.querySelectorAll(".filters button").forEach(x => x.classList.toggle("active", x === b)); render();
 }));
+$("#search").addEventListener("input", (e) => { QUERY = e.target.value.trim().toLowerCase(); render(); });
 
-function postCfg(id){ return CFG.posts[id] || (CFG.posts[id] = { enabled:false, link:"", keyword:"", dm:"", reply:"" }); }
-function esc(s){ return String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
-
-function render() {
-  const grid = $("#grid"); grid.innerHTML = "";
-  const list = MEDIA.filter(m => FILTER === "all" || (FILTER === "reel" ? m.type === "REEL" : CFG.posts[m.id]?.enabled));
-  if (!list.length) grid.innerHTML = '<p class="muted">مفيش بوستات هنا.</p>';
-  for (const m of list) {
-    const p = CFG.posts[m.id] || {};
-    const el = document.createElement("div");
-    el.className = "card post" + (p.enabled ? " on" : "");
-    const date = m.timestamp ? new Date(m.timestamp).toLocaleDateString("ar-EG", { day:"numeric", month:"short", year:"numeric" }) : "";
-    el.innerHTML = `
-      <div class="media">
-        ${m.thumb ? `<img loading="lazy" src="${esc(m.thumb)}" alt="">` : '<div class="noimg"></div>'}
-        <div style="min-width:0;flex:1">
-          <div><span class="tag">${esc(m.type === "REEL" ? "Reel" : m.type === "VIDEO" ? "فيديو" : m.type === "CAROUSEL_ALBUM" ? "ألبوم" : "صورة")}</span><span class="muted">${esc(date)}</span></div>
-          <div class="cap">${esc(m.caption) || '<span class="muted">بدون وصف</span>'}</div>
-          <a class="muted" href="${esc(m.permalink)}" target="_blank" rel="noopener">فتح على انستا ↗</a>
-        </div>
-      </div>
-      <div class="body">
-        <label class="switch"><input type="checkbox" data-k="enabled" ${p.enabled ? "checked" : ""}> رد تلقائي على الفيديو ده</label>
-        <label class="f">رابط الفيديو ده</label>
-        <input type="url" dir="ltr" data-k="link" placeholder="https://..." value="${esc(p.link)}">
-        <details ${p.keyword || p.dm || p.reply ? "open" : ""}>
-          <summary>إعدادات إضافية (اختياري)</summary>
-          <label class="f">كلمة معينة (سيبها فاضية = الرد على كل الكومنتات)</label>
-          <input type="text" data-k="keyword" placeholder="مثلاً: تحميل,لينك" value="${esc(p.keyword)}">
-          <label class="f">رسالة خاصة ثابتة للفيديو ده (بدل العشوائي)</label>
-          <textarea data-k="dm" placeholder="فاضي = واحدة عشوائي من الخطوة 1">${esc(p.dm)}</textarea>
-          <label class="f">رد ثابت على الكومنت (بدل العشوائي)</label>
-          <input type="text" data-k="reply" placeholder="فاضي = واحد عشوائي من الخطوة 1" value="${esc(p.reply)}">
-        </details>
-      </div>`;
-    el.querySelectorAll("[data-k]").forEach(inp => {
-      const ev = inp.type === "checkbox" ? "change" : "input";
-      inp.addEventListener(ev, () => {
-        const pc = postCfg(m.id);
-        pc[inp.dataset.k] = inp.type === "checkbox" ? inp.checked : inp.value;
-        pc.caption = m.caption.slice(0, 120); pc.permalink = m.permalink;
-        if (inp.dataset.k === "link" && inp.value.trim() && !pc.enabled) { pc.enabled = true; el.querySelector('[data-k=enabled]').checked = true; }
-        el.classList.toggle("on", !!pc.enabled);
-        markDirty();
-      });
-    });
-    grid.appendChild(el);
-  }
+function status(p){
+  if (!p || !p.enabled) return ["off", "مش متفعّل"];
+  if (!isLink(p.link)) return ["warn", "محتاج لينك"];
+  return ["ok", "شغال"];
 }
 
-function markDirty(){ dirty = true; $("#saveMsg").className = "msg"; $("#saveMsg").textContent = "فيه تعديلات مش محفوظة"; }
+function updateStats(){
+  const posts = Object.values(CFG.posts || {});
+  $("#stActive").textContent = posts.filter(p => p.enabled && isLink(p.link)).length;
+  $("#stMissing").textContent = posts.filter(p => p.enabled && !isLink(p.link)).length;
+  $("#stLoaded").textContent = MEDIA.length;
+}
+
+function render() {
+  updateStats();
+  const grid = $("#grid"); grid.innerHTML = "";
+  const list = MEDIA.filter(m => {
+    const p = CFG.posts[m.id];
+    if (FILTER === "on" && !(p && p.enabled)) return false;
+    if (FILTER === "off" && p && p.enabled) return false;
+    if (FILTER === "reel" && m.type !== "REEL") return false;
+    if (QUERY && !(m.caption || "").toLowerCase().includes(QUERY)) return false;
+    return true;
+  });
+  if (!list.length) grid.innerHTML = '<p class="muted">مفيش بوستات هنا.</p>';
+  for (const m of list) grid.appendChild(card(m));
+}
+
+function card(m){
+  const p = CFG.posts[m.id] || {};
+  const el = document.createElement("div");
+  const date = m.timestamp ? new Date(m.timestamp).toLocaleDateString("ar-EG", { day:"numeric", month:"short", year:"numeric" }) : "";
+  const typeLbl = m.type === "REEL" ? "Reel" : m.type === "VIDEO" ? "فيديو" : m.type === "CAROUSEL_ALBUM" ? "ألبوم" : "صورة";
+  el.innerHTML = `
+    <div class="media">
+      ${m.thumb ? `<img loading="lazy" src="${esc(m.thumb)}" alt="">` : '<div class="noimg"></div>'}
+      <div style="min-width:0;flex:1">
+        <div><span class="tag">${esc(typeLbl)}</span><span class="muted">${esc(date)}</span></div>
+        <div class="cap">${esc(m.caption) || '<span class="muted">بدون وصف</span>'}</div>
+        <a class="muted" href="${esc(m.permalink)}" target="_blank" rel="noopener">فتح على انستا ↗</a>
+      </div>
+    </div>
+    <div class="body">
+      <div class="row">
+        <label class="switch"><input type="checkbox" data-k="enabled"> رد تلقائي</label>
+        <span class="pill"></span>
+      </div>
+      <input type="url" dir="ltr" data-k="link" placeholder="https://..." aria-label="لينك الفيديو">
+    </div>`;
+  const chk = el.querySelector('[data-k=enabled]'), inp = el.querySelector('[data-k=link]'), pill = el.querySelector(".pill");
+  chk.checked = !!p.enabled; inp.value = p.link || "";
+  const refresh = () => {
+    const pc = CFG.posts[m.id];
+    const [cls, txt] = status(pc);
+    pill.className = "pill " + cls; pill.textContent = txt;
+    el.className = "card post" + (pc && pc.enabled ? " on" : "");
+    inp.classList.toggle("bad", !!(pc && pc.enabled && inp.value.trim() && !isLink(inp.value)));
+    updateStats();
+  };
+  const upd = () => {
+    const pc = CFG.posts[m.id] || (CFG.posts[m.id] = { enabled: false, link: "" });
+    pc.enabled = chk.checked; pc.link = inp.value.trim();
+    pc.caption = (m.caption || "").slice(0, 120); pc.permalink = m.permalink || "";
+    refresh(); markDirty();
+  };
+  chk.addEventListener("change", upd);
+  inp.addEventListener("input", () => { if (inp.value.trim() && !chk.checked) chk.checked = true; upd(); });
+  refresh();
+  return el;
+}
+
+function markDirty(){ dirty = true; $("#save").disabled = false; $("#saveMsg").className = "msg"; $("#saveMsg").textContent = "فيه تعديلات مش محفوظة"; }
 window.addEventListener("beforeunload", (e) => { if (dirty) { e.preventDefault(); e.returnValue = ""; } });
 
 $("#save").addEventListener("click", async () => {
-  const missing = Object.entries(CFG.posts).filter(([, p]) => p.enabled && !/^https?:\/\//.test((p.link || "").trim()));
-  if (missing.length) { $("#saveMsg").className = "msg err"; $("#saveMsg").textContent = "فيه فيديو مفعّل من غير رابط صحيح (لازم يبدأ بـ https://)"; return; }
+  const bad = Object.values(CFG.posts).filter(p => p.enabled && !isLink(p.link));
+  if (bad.length) { $("#saveMsg").className = "msg err"; $("#saveMsg").textContent = `فيه ${bad.length} فيديو مفعّل من غير لينك صحيح (لازم يبدأ بـ https://)`; return; }
   $("#save").disabled = true; $("#saveMsg").className = "msg"; $("#saveMsg").textContent = "بيحفظ...";
-  CFG.enabled = $("#enabled").checked; readSettings();
   try {
-    const d = await api("/api/admin", { method: "POST", body: JSON.stringify(CFG) });
+    const d = await api("/api/admin", { method: "POST", body: JSON.stringify({ enabled: CFG.enabled, posts: CFG.posts }) });
     CFG = d.config; dirty = false;
     $("#saveMsg").className = "msg ok"; $("#saveMsg").textContent = "اتحفظ ✓ — هيشتغل خلال أقل من دقيقة";
-  } catch (err) { $("#saveMsg").className = "msg err"; $("#saveMsg").textContent = "الحفظ فشل: " + err.message; }
-  $("#save").disabled = false;
+    render();
+  } catch (err) { $("#save").disabled = false; $("#saveMsg").className = "msg err"; $("#saveMsg").textContent = "الحفظ فشل: " + err.message; }
 });
 
 const saved = store.get();
