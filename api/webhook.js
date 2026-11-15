@@ -1,7 +1,8 @@
 // Instagram comment auto-reply webhook (Vercel Function).
-// When someone comments with a keyword, reply to the comment and send them a DM with the link.
+// Each post (video) has its own link in the settings panel. Any comment on an enabled post
+// gets a public reply + a private DM with that post's link (optionally only if it contains a keyword).
 import crypto from "node:crypto";
-import rules from "../rules.js";
+import { loadConfig } from "../lib/config.js";
 
 const env = (k, d = "") => process.env[k] ?? d;
 const GRAPH = () => `https://graph.instagram.com/${env("GRAPH_VERSION", "v24.0")}`;
@@ -17,35 +18,11 @@ export function normalize(s = "") {
     .trim();
 }
 
-export function matchesKeyword(text, keywords = env("KEYWORDS", "تحميل")) {
+export function matchesKeyword(text, keywords) {
+  const list = String(keywords ?? "").split(",").map(normalize).filter(Boolean);
+  if (!list.length) return true; // no keyword = every comment
   const t = normalize(text);
-  return keywords
-    .split(",")
-    .map((k) => normalize(k))
-    .filter(Boolean)
-    .some((k) => t.includes(k));
-}
-
-// Rules from rules.js, plus the old KEYWORDS/DOWNLOAD_LINK env vars as a fallback rule.
-export function allRules(list = rules) {
-  const out = [...(Array.isArray(list) ? list : [])];
-  if (env("KEYWORDS") && env("DOWNLOAD_LINK")) out.push({ keyword: env("KEYWORDS"), link: env("DOWNLOAD_LINK") });
-  return out.filter((r) => r && r.keyword && r.link);
-}
-
-// Pick the rule for this comment: rules pinned to this post win, then the longest matching keyword.
-export function findRule(text, mediaId, list = allRules()) {
-  const t = normalize(text);
-  let best = null, bestScore = -1;
-  for (const r of list) {
-    if (r.media && String(r.media) !== String(mediaId ?? "")) continue;
-    for (const k of String(r.keyword).split(",").map(normalize).filter(Boolean)) {
-      if (!t.includes(k)) continue;
-      const score = (r.media ? 1000 : 0) + k.length;
-      if (score > bestScore) { best = r; bestScore = score; }
-    }
-  }
-  return best;
+  return list.some((k) => t.includes(k));
 }
 
 function validSignature(raw, header) {
@@ -72,23 +49,27 @@ function fill(template, vars) {
   return template.replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? "");
 }
 
-export async function handleComment(value, ownerId) {
+export async function handleComment(value, ownerId, cfg) {
   const commentId = value?.id;
   const text = value?.text ?? "";
   const from = value?.from ?? {};
+  const mediaId = value?.media?.id;
   if (!commentId) return "no-comment-id";
   if (from.id && (from.id === ownerId || from.id === env("IG_USER_ID"))) return "own-comment";
   if (from.username && from.username === env("IG_USERNAME")) return "own-comment";
-  const rule = findRule(text, value?.media?.id);
-  if (!rule) return "no-keyword";
+  if (!cfg.enabled) return "disabled";
 
-  const vars = { username: from.username ?? "", link: rule.link };
-  const replyText = fill(rule.reply || env("COMMENT_REPLY", "بعتلك الرابط في الخاص ❤️"), vars);
-  const dmText = fill(rule.dm || env("DM_MESSAGE", "أهلاً {username} 👋\nده رابط تحميل الأداة: {link}"), vars);
+  const post = cfg.posts?.[mediaId];
+  if (!post || !post.enabled || !post.link) return "post-not-configured";
+  if (!matchesKeyword(text, post.keyword)) return "no-keyword";
+
+  const vars = { username: from.username ?? "", link: post.link };
+  const replyText = fill(post.reply || cfg.defaultReply || "", vars);
+  const dmText = fill(post.dm || cfg.defaultDm || "{link}", vars);
 
   // Private reply (DM) tied to the comment, then a public reply on the comment.
   const dm = await callGraph(`/me/messages`, { recipient: { comment_id: commentId }, message: { text: dmText } });
-  const reply = await callGraph(`/${commentId}/replies`, { message: replyText });
+  const reply = replyText ? await callGraph(`/${commentId}/replies`, { message: replyText }) : { ok: true };
   return `dm:${dm.ok} reply:${reply.ok}`;
 }
 
@@ -111,11 +92,12 @@ export async function POST(request) {
   let body;
   try { body = JSON.parse(raw); } catch { return new Response("Bad JSON", { status: 400 }); }
 
+  const cfg = await loadConfig();
   const results = [];
   for (const entry of body.entry ?? []) {
     for (const change of entry.changes ?? []) {
       if (change.field !== "comments") continue;
-      results.push(await handleComment(change.value, entry.id));
+      results.push(await handleComment(change.value, entry.id, cfg));
     }
   }
   console.log("processed", results);
