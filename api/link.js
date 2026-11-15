@@ -1,7 +1,7 @@
-// Read-only lookup for automations (viaSocket etc.):
-//   GET /api/link?media_id=123  ->  { found: true, link: "https://...", keyword: "" }
-//   Unknown / disabled post     ->  { found: false, link: "" }
-// Only returns the link that commenters receive anyway, so it needs no password.
+// Read-only lookup used by the viaSocket flow:
+//   GET /api/link?media_id=123  ->  { found: true, link: "https://..." }
+//   Unknown / turned-off video   ->  { found: false, link: "" }
+// It only returns the link that commenters receive anyway, so it needs no password.
 import { loadConfig } from "../lib/config.js";
 
 export async function GET(request) {
@@ -12,5 +12,5 @@ export async function GET(request) {
   const cfg = await loadConfig();
   const post = cfg.posts?.[id];
   const ok = cfg.enabled && post?.enabled && /^https?:\/\//i.test(post?.link ?? "");
-  return Response.json(ok ? { found: true, link: post.link, keyword: post.keyword ?? "" } : { found: false, link: "" }, { headers });
+  return Response.json(ok ? { found: true, link: post.link } : { found: false, link: "" }, { headers });
 }

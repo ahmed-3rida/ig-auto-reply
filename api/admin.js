@@ -1,7 +1,7 @@
-// Settings panel API. Every request must send header `x-admin-key` = VERIFY_TOKEN.
-//   GET  /api/admin?action=config            -> current settings
-//   GET  /api/admin?action=media[&after=...] -> your Instagram posts (for picking videos)
-//   POST /api/admin  (JSON settings)          -> save settings
+// Panel API. Every request must send header `x-admin-key` = VERIFY_TOKEN (the panel password).
+//   GET  /api/admin?action=config            -> which videos are on + their links
+//   GET  /api/admin?action=media[&after=...] -> your Instagram posts (thumbnails for the panel)
+//   POST /api/admin  { enabled, posts }       -> save
 import crypto from "node:crypto";
 import { loadConfig, saveConfig } from "../lib/config.js";
 
