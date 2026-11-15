@@ -46,6 +46,7 @@ details summary{cursor:pointer;color:var(--muted);font-size:13px;margin-top:8px}
 .filters{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
 .filters button.active{border-color:var(--accent);color:var(--accent);font-weight:600}
 a{color:var(--accent)}
+textarea.list{unicode-bidi:plaintext;text-align:start}
 </style>
 </head>
 <body>
@@ -64,7 +65,7 @@ a{color:var(--accent)}
   <div class="top">
     <div>
       <h1>لوحة الرد التلقائي</h1>
-      <div class="muted">فعّل الفيديو وحط الرابط بتاعه. أي كومنت على الفيديو هياخد رد + رسالة خاصة فيها الرابط.</div>
+      <div class="muted">فعّل الفيديو وحط الرابط بتاعه. أي كومنت عليه هياخد رد + رسالة خاصة فيها زرار، ولما يدوس عليه ياخد اللينك.</div>
     </div>
     <label class="switch"><input type="checkbox" id="enabled"> <span id="enabledLbl">النظام شغال</span></label>
   </div>
@@ -74,18 +75,44 @@ a{color:var(--accent)}
   </div>
 
   <div class="card">
-    <h2>الرسايل الافتراضية</h2>
+    <h2>الخطوة 1 — لما حد يكتب كومنت</h2>
+    <div class="muted">كل سطر = رسالة. السيستم بيختار واحدة عشوائي كل مرة. تقدر تكتب <code>{username}</code> لاسم الشخص.</div>
     <div class="row">
       <div>
-        <label class="f" for="defaultDm">الرسالة الخاصة (DM)</label>
-        <textarea id="defaultDm"></textarea>
+        <label class="f" for="commentReplies">الرد العام على الكومنت</label>
+        <textarea id="commentReplies" class="list" dir="auto" rows="7"></textarea>
       </div>
       <div>
-        <label class="f" for="defaultReply">الرد على الكومنت</label>
-        <textarea id="defaultReply"></textarea>
+        <label class="f" for="dmMessages">الرسالة الخاصة (معاها زرار)</label>
+        <textarea id="dmMessages" class="list" dir="auto" rows="7"></textarea>
+        <label class="f" for="linkButtonTitle">اسم الزرار</label>
+        <input type="text" id="linkButtonTitle" maxlength="20">
       </div>
     </div>
-    <div class="muted" style="margin-top:6px">تقدر تكتب <code>{username}</code> لاسم الشخص و <code>{link}</code> لرابط الفيديو. سيب الرد على الكومنت فاضي لو مش عايز رد عام.</div>
+  </div>
+
+  <div class="card" style="margin-top:14px">
+    <div class="top" style="margin:0 0 4px">
+      <h2 style="margin:0">الخطوة 2 — لما يدوس على الزرار</h2>
+      <div style="display:flex;gap:16px;flex-wrap:wrap">
+        <label class="switch"><input type="checkbox" id="followGate"> اللينك للمتابعين بس</label>
+        <label class="switch"><input type="checkbox" id="reactOnLink"> ❤️ على رسالته</label>
+      </div>
+    </div>
+    <div class="row">
+      <div>
+        <label class="f" for="followerReplies">لو متابعك: الرسالة اللي معاها اللينك</label>
+        <textarea id="followerReplies" class="list" dir="auto" rows="7"></textarea>
+        <label class="f" for="urlButtonTitle">اسم زرار اللينك</label>
+        <input type="text" id="urlButtonTitle" maxlength="20">
+      </div>
+      <div id="nonFollowerBox">
+        <label class="f" for="nonFollowerMessages">لو مش متابعك: رسالة «اعمل فولو»</label>
+        <textarea id="nonFollowerMessages" class="list" dir="auto" rows="7"></textarea>
+        <label class="f" for="followingButtonTitle">اسم زرار «عملت فولو»</label>
+        <input type="text" id="followingButtonTitle" maxlength="20">
+      </div>
+    </div>
   </div>
 
   <div class="top" style="margin-top:20px;margin-bottom:0">
@@ -127,7 +154,7 @@ async function login(pw) {
   $("#storageWarn").classList.toggle("hide", d.storage);
   $("#login").classList.add("hide"); $("#app").classList.remove("hide"); $("#bar").classList.remove("hide");
   $("#enabled").checked = CFG.enabled; syncEnabledLbl();
-  $("#defaultDm").value = CFG.defaultDm || ""; $("#defaultReply").value = CFG.defaultReply || "";
+  fillSettings();
   await loadMedia();
 }
 
@@ -138,7 +165,23 @@ $("#loginForm").addEventListener("submit", async (e) => {
 
 function syncEnabledLbl(){ $("#enabledLbl").textContent = $("#enabled").checked ? "النظام شغال" : "النظام متوقف"; }
 $("#enabled").addEventListener("change", () => { syncEnabledLbl(); markDirty(); });
-["#defaultDm","#defaultReply"].forEach(s => $(s).addEventListener("input", markDirty));
+const LISTS = ["commentReplies","dmMessages","followerReplies","nonFollowerMessages"];
+const TEXTS = ["linkButtonTitle","urlButtonTitle","followingButtonTitle"];
+const BOOLS = ["followGate","reactOnLink"];
+function fillSettings(){
+  LISTS.forEach(k => $("#"+k).value = (CFG[k] || []).join("\n"));
+  TEXTS.forEach(k => $("#"+k).value = CFG[k] || "");
+  BOOLS.forEach(k => $("#"+k).checked = CFG[k] !== false);
+  syncGate();
+}
+function readSettings(){
+  LISTS.forEach(k => CFG[k] = $("#"+k).value.split("\n").map(x => x.trim()).filter(Boolean));
+  TEXTS.forEach(k => CFG[k] = $("#"+k).value.trim());
+  BOOLS.forEach(k => CFG[k] = $("#"+k).checked);
+}
+function syncGate(){ $("#nonFollowerBox").style.opacity = $("#followGate").checked ? 1 : .45; }
+[...LISTS, ...TEXTS].forEach(k => $("#"+k).addEventListener("input", markDirty));
+BOOLS.forEach(k => $("#"+k).addEventListener("change", () => { syncGate(); markDirty(); }));
 
 async function loadMedia() {
   $("#more").disabled = true; $("#mediaErr").textContent = "";
@@ -183,10 +226,10 @@ function render() {
           <summary>إعدادات إضافية (اختياري)</summary>
           <label class="f">كلمة معينة (سيبها فاضية = الرد على كل الكومنتات)</label>
           <input type="text" data-k="keyword" placeholder="مثلاً: تحميل,لينك" value="${esc(p.keyword)}">
-          <label class="f">رسالة خاصة مخصوصة للفيديو ده</label>
-          <textarea data-k="dm" placeholder="فاضي = الرسالة الافتراضية">${esc(p.dm)}</textarea>
-          <label class="f">رد مخصوص على الكومنت</label>
-          <input type="text" data-k="reply" placeholder="فاضي = الرد الافتراضي" value="${esc(p.reply)}">
+          <label class="f">رسالة خاصة ثابتة للفيديو ده (بدل العشوائي)</label>
+          <textarea data-k="dm" placeholder="فاضي = واحدة عشوائي من الخطوة 1">${esc(p.dm)}</textarea>
+          <label class="f">رد ثابت على الكومنت (بدل العشوائي)</label>
+          <input type="text" data-k="reply" placeholder="فاضي = واحد عشوائي من الخطوة 1" value="${esc(p.reply)}">
         </details>
       </div>`;
     el.querySelectorAll("[data-k]").forEach(inp => {
@@ -211,7 +254,7 @@ $("#save").addEventListener("click", async () => {
   const missing = Object.entries(CFG.posts).filter(([, p]) => p.enabled && !/^https?:\/\//.test((p.link || "").trim()));
   if (missing.length) { $("#saveMsg").className = "msg err"; $("#saveMsg").textContent = "فيه فيديو مفعّل من غير رابط صحيح (لازم يبدأ بـ https://)"; return; }
   $("#save").disabled = true; $("#saveMsg").className = "msg"; $("#saveMsg").textContent = "بيحفظ...";
-  CFG.enabled = $("#enabled").checked; CFG.defaultDm = $("#defaultDm").value; CFG.defaultReply = $("#defaultReply").value;
+  CFG.enabled = $("#enabled").checked; readSettings();
   try {
     const d = await api("/api/admin", { method: "POST", body: JSON.stringify(CFG) });
     CFG = d.config; dirty = false;
