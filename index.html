@@ -50,6 +50,11 @@ button:disabled{opacity:.55;cursor:default}
 .hide{display:none!important}
 .banner{border-color:var(--err);margin:14px 0}
 a{color:var(--accent)}
+h2{font-size:16px;margin:0 0 4px}
+.rule{display:grid;grid-template-columns:auto 1fr 1.4fr auto auto;gap:8px;align-items:center;padding:10px 0;border-top:1px solid var(--line)}
+.rule:first-child{border-top:0}
+.icon-btn{padding:6px 10px;color:var(--err);justify-self:end}
+@media (max-width:700px){.rule{grid-template-columns:auto 1fr auto auto}.rule .rlink{grid-column:1/-1}}
 </style>
 </head>
 <body>
@@ -79,7 +84,19 @@ a{color:var(--accent)}
   <div class="stats">
     <div class="stat"><b id="stActive">0</b><span class="muted">فيديو شغال</span></div>
     <div class="stat"><b id="stMissing">0</b><span class="muted">مفعّل من غير لينك</span></div>
+    <div class="stat"><b id="stRules">0</b><span class="muted">فيديو جاي (بالوصف)</span></div>
     <div class="stat"><b id="stLoaded">0</b><span class="muted">بوست ظاهر</span></div>
+  </div>
+
+  <div class="card" style="margin-bottom:16px">
+    <div class="top">
+      <div>
+        <h2>فيديوهات مجدولة أو لسه جاية</h2>
+        <div class="muted">انستجرام مش بيظهر الفيديوهات المجدولة لحد ما تتنشر. اكتب كلمة أو هاشتاج هيكون في <b>وصف</b> الفيديو + اللينك، وأول ما الفيديو ينزل ويجيله كومنت اللينك هيتبعت لوحده.</div>
+      </div>
+      <button id="addRule">+ إضافة فيديو جاي</button>
+    </div>
+    <div id="rules" style="margin-top:8px"></div>
   </div>
 
   <div class="tools">
@@ -107,6 +124,12 @@ const $ = (s) => document.querySelector(s);
 let KEY = "", CFG = null, MEDIA = [], AFTER = null, FILTER = "all", QUERY = "", dirty = false;
 const store = { get(){ try { return sessionStorage.getItem("adm") || ""; } catch { return ""; } },
                 set(v){ try { sessionStorage.setItem("adm", v); } catch {} } };
+const norm = (s) => String(s || "").toLowerCase().replace(/[\u064B-\u0652\u0640]/g, "").replace(/[أإآ]/g, "ا").replace(/ى/g, "ي").replace(/ة/g, "ه").replace(/\s+/g, " ").trim();
+function ruleFor(caption){
+  const c = norm(caption); if (!c) return null; let best = null;
+  for (const r of CFG.rules || []) { const m = norm(r.match); if (r.enabled && m && c.includes(m) && isLink(r.link) && (!best || m.length > norm(best.match).length)) best = r; }
+  return best;
+}
 const isLink = (s) => /^https?:\/\/\S+$/i.test((s || "").trim());
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 
@@ -124,7 +147,9 @@ async function login(pw) {
   CFG = d.config;
   $("#storageWarn").classList.toggle("hide", d.storage);
   $("#login").classList.add("hide"); $("#app").classList.remove("hide"); $("#bar").classList.remove("hide");
+  CFG.rules = CFG.rules || [];
   $("#enabled").checked = CFG.enabled !== false; syncEnabled();
+  renderRules();
   await loadMedia();
 }
 
@@ -144,7 +169,7 @@ async function loadMedia() {
   $("#more").disabled = true; $("#mediaErr").textContent = "";
   try {
     const d = await api("/api/admin?action=media" + (AFTER ? "&after=" + encodeURIComponent(AFTER) : ""));
-    MEDIA = MEDIA.concat(d.items); AFTER = d.after; render();
+    MEDIA = MEDIA.concat(d.items); AFTER = d.after; render(); renderRules();
   } catch (err) { $("#mediaErr").textContent = "مقدرتش أجيب البوستات من انستجرام: " + err.message; }
   $("#more").disabled = false; $("#more").classList.toggle("hide", !AFTER);
 }
@@ -155,7 +180,8 @@ document.querySelectorAll(".filters button").forEach(b => b.addEventListener("cl
 }));
 $("#search").addEventListener("input", (e) => { QUERY = e.target.value.trim().toLowerCase(); render(); });
 
-function status(p){
+function status(p, m){
+  if (!p) { const r = m && ruleFor(m.caption); if (r) return ["ok", "شغال (من الوصف: " + r.match + ")"]; }
   if (!p || !p.enabled) return ["off", "مش متفعّل"];
   if (!isLink(p.link)) return ["warn", "محتاج لينك"];
   return ["ok", "شغال"];
@@ -166,6 +192,7 @@ function updateStats(){
   $("#stActive").textContent = posts.filter(p => p.enabled && isLink(p.link)).length;
   $("#stMissing").textContent = posts.filter(p => p.enabled && !isLink(p.link)).length;
   $("#stLoaded").textContent = MEDIA.length;
+  $("#stRules").textContent = (CFG.rules || []).filter(r => r.enabled && norm(r.match) && isLink(r.link)).length;
 }
 
 function render() {
@@ -208,7 +235,7 @@ function card(m){
   chk.checked = !!p.enabled; inp.value = p.link || "";
   const refresh = () => {
     const pc = CFG.posts[m.id];
-    const [cls, txt] = status(pc);
+    const [cls, txt] = status(pc, m);
     pill.className = "pill " + cls; pill.textContent = txt;
     el.className = "card post" + (pc && pc.enabled ? " on" : "");
     inp.classList.toggle("bad", !!(pc && pc.enabled && inp.value.trim() && !isLink(inp.value)));
@@ -226,18 +253,54 @@ function card(m){
   return el;
 }
 
+function renderRules(){
+  const box = $("#rules"); box.innerHTML = "";
+  if (!CFG.rules.length) { box.innerHTML = '<p class="muted" style="margin:6px 0 0">مفيش فيديوهات جاية. دوس «إضافة فيديو جاي».</p>'; updateStats(); return; }
+  CFG.rules.forEach((r, i) => {
+    const row = document.createElement("div"); row.className = "rule";
+    row.innerHTML = `
+      <label class="switch" title="شغال"><input type="checkbox"></label>
+      <input type="text" dir="auto" placeholder="كلمة/هاشتاج من الوصف، مثلاً #tool25" aria-label="كلمة من الوصف">
+      <input type="url" dir="ltr" class="rlink" placeholder="https://..." aria-label="اللينك">
+      <span class="pill"></span>
+      <button class="icon-btn" title="حذف" aria-label="حذف">✕</button>`;
+    const [chk, mt, ln] = row.querySelectorAll("input"); const pill = row.querySelector(".pill");
+    chk.checked = r.enabled !== false; mt.value = r.match || ""; ln.value = r.link || "";
+    const refresh = () => {
+      const ok = r.enabled && norm(r.match) && isLink(r.link);
+      const used = ok && MEDIA.some(m => !CFG.posts[m.id] && ruleFor(m.caption) === r);
+      pill.className = "pill " + (!r.enabled ? "off" : ok ? "ok" : "warn");
+      pill.textContent = !r.enabled ? "متوقف" : !ok ? "ناقص" : used ? "اتربط بفيديو ✓" : "مستني الفيديو";
+      mt.classList.toggle("bad", r.enabled && !norm(r.match));
+      ln.classList.toggle("bad", r.enabled && ln.value.trim() !== "" && !isLink(ln.value));
+      updateStats();
+    };
+    const upd = () => { r.enabled = chk.checked; r.match = mt.value.trim(); r.link = ln.value.trim(); refresh(); markDirty(); };
+    chk.addEventListener("change", upd); mt.addEventListener("input", upd); ln.addEventListener("input", upd);
+    mt.addEventListener("change", render); // re-check which posts match
+    row.querySelector("button").addEventListener("click", () => { CFG.rules.splice(i, 1); renderRules(); render(); markDirty(); });
+    refresh(); box.appendChild(row);
+  });
+}
+$("#addRule").addEventListener("click", () => {
+  CFG.rules.unshift({ id: String(Date.now()), match: "", link: "", enabled: true });
+  renderRules(); markDirty(); $("#rules input[type=text]").focus();
+});
+
 function markDirty(){ dirty = true; $("#save").disabled = false; $("#saveMsg").className = "msg"; $("#saveMsg").textContent = "فيه تعديلات مش محفوظة"; }
 window.addEventListener("beforeunload", (e) => { if (dirty) { e.preventDefault(); e.returnValue = ""; } });
 
 $("#save").addEventListener("click", async () => {
+  const badRules = (CFG.rules || []).filter(r => r.enabled && (!norm(r.match) || !isLink(r.link)));
+  if (badRules.length) { $("#saveMsg").className = "msg err"; $("#saveMsg").textContent = `فيه ${badRules.length} فيديو جاي ناقصه الكلمة أو اللينك`; return; }
   const bad = Object.values(CFG.posts).filter(p => p.enabled && !isLink(p.link));
   if (bad.length) { $("#saveMsg").className = "msg err"; $("#saveMsg").textContent = `فيه ${bad.length} فيديو مفعّل من غير لينك صحيح (لازم يبدأ بـ https://)`; return; }
   $("#save").disabled = true; $("#saveMsg").className = "msg"; $("#saveMsg").textContent = "بيحفظ...";
   try {
-    const d = await api("/api/admin", { method: "POST", body: JSON.stringify({ enabled: CFG.enabled, posts: CFG.posts }) });
-    CFG = d.config; dirty = false;
+    const d = await api("/api/admin", { method: "POST", body: JSON.stringify({ enabled: CFG.enabled, posts: CFG.posts, rules: CFG.rules }) });
+    CFG = d.config; CFG.rules = CFG.rules || []; dirty = false;
     $("#saveMsg").className = "msg ok"; $("#saveMsg").textContent = "اتحفظ ✓ — هيشتغل خلال أقل من دقيقة";
-    render();
+    renderRules(); render();
   } catch (err) { $("#save").disabled = false; $("#saveMsg").className = "msg err"; $("#saveMsg").textContent = "الحفظ فشل: " + err.message; }
 });
 
