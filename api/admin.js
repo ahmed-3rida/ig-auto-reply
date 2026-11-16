@@ -40,7 +40,7 @@ export async function GET(request) {
     if (!res.ok) return json({ error: data?.error?.message ?? "Graph error" }, 502);
     const items = (data.data ?? []).map((m) => ({
       id: m.id,
-      caption: (m.caption ?? "").slice(0, 140),
+      caption: (m.caption ?? "").slice(0, 1000),
       type: m.media_product_type === "REELS" ? "REEL" : m.media_type,
       thumb: m.thumbnail_url || (m.media_type !== "VIDEO" ? m.media_url : ""),
       permalink: m.permalink,
