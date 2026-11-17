@@ -86,6 +86,22 @@ export async function GET(request) {
   try {
     const msgs = await recentMessages(user);
     const result = decide(kind, msgs, user, now);
+    if (u.searchParams.get("debug") === "2") {
+      // which way of finding the conversation works (booleans/counts only)
+      const tries = {};
+      const t = async (name, path, pick) => { try { tries[name] = pick(await graph(path)); } catch (e) { tries[name] = "ERR " + String(e.message).slice(0, 120); } };
+      const me = await graph(`/me?fields=user_id,id`).catch(() => ({}));
+      tries.meHasUserId = !!me.user_id; tries.meIdEqualsUserId = me.id === me.user_id;
+      await t("byMeUserId", `/me/conversations?platform=instagram&user_id=${user}`, (d) => d.data?.length ?? 0);
+      if (me.user_id) await t("byIgIdUserId", `/${me.user_id}/conversations?platform=instagram&user_id=${user}`, (d) => d.data?.length ?? 0);
+      await t("scanParticipants", `/me/conversations?platform=instagram&fields=participants&limit=100`, (d) => ({
+        total: d.data?.length ?? 0,
+        found: (d.data ?? []).some((c) => (c.participants?.data ?? []).some((p) => String(p.id) === user)),
+        sampleIdLength: d.data?.[0]?.participants?.data?.map((p) => String(p.id).length) ?? [],
+      }));
+      locks.delete(key);
+      return Response.json({ tries }, { headers });
+    }
     if (u.searchParams.get("debug") === "1") {
       // shape only, never message contents
       const ours = msgs.filter((m) => m?.from?.id && String(m.from.id) !== user);
@@ -98,6 +114,22 @@ export async function GET(request) {
   } catch (e) {
     console.error("should-reply: Instagram check failed", e?.message);
     const out = { reply: true, reason: "check-failed" };
+    if (u.searchParams.get("debug") === "2") {
+      // which way of finding the conversation works (booleans/counts only)
+      const tries = {};
+      const t = async (name, path, pick) => { try { tries[name] = pick(await graph(path)); } catch (e) { tries[name] = "ERR " + String(e.message).slice(0, 120); } };
+      const me = await graph(`/me?fields=user_id,id`).catch(() => ({}));
+      tries.meHasUserId = !!me.user_id; tries.meIdEqualsUserId = me.id === me.user_id;
+      await t("byMeUserId", `/me/conversations?platform=instagram&user_id=${user}`, (d) => d.data?.length ?? 0);
+      if (me.user_id) await t("byIgIdUserId", `/${me.user_id}/conversations?platform=instagram&user_id=${user}`, (d) => d.data?.length ?? 0);
+      await t("scanParticipants", `/me/conversations?platform=instagram&fields=participants&limit=100`, (d) => ({
+        total: d.data?.length ?? 0,
+        found: (d.data ?? []).some((c) => (c.participants?.data ?? []).some((p) => String(p.id) === user)),
+        sampleIdLength: d.data?.[0]?.participants?.data?.map((p) => String(p.id).length) ?? [],
+      }));
+      locks.delete(key);
+      return Response.json({ tries }, { headers });
+    }
     if (u.searchParams.get("debug") === "1") { out.error = String(e?.message).slice(0, 200); locks.delete(key); }
     return Response.json(out, { headers });
   }
