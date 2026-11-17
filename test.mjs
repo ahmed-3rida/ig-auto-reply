@@ -89,6 +89,37 @@ assert((await ask("10005", "link")).reply === true, "after 24h they can get it a
 assert((await ask("10006", "ask")).reply === true, "new person asked to follow");
 assert((await sr.GET(new Request("https://x/api/should-reply?user=abc"))).status === 400, "bad user rejected");
 
+// v2: link / message / message + link, editable button title
+const v2 = await import("./api/link-v2.js");
+const l2 = async (qs) => (await v2.GET(new Request("https://x/api/link-v2?" + qs))).json();
+await save({ enabled: true, posts: {
+  "201": { enabled: true, link: "https://a.com/1" },                                                   // old-style entry
+  "202": { enabled: true, mode: "message", message: "Steps:\r\n1- a\n2- b", button: "Steps 📋" },
+  "203": { enabled: true, mode: "both", message: "Read this", link: "https://b.com", button: "Get it" },
+  "204": { enabled: true, mode: "both", message: "", link: "https://c.com" },                           // falls back to link
+  "205": { enabled: true, mode: "message", message: "   " },                                            // nothing to send
+  "206": { enabled: true, mode: "weird", link: "https://d.com", button: "x".repeat(40), message: "m".repeat(2000) },
+}, rules: [{ match: "#msgonly", mode: "message", message: "Coming soon steps", enabled: true }] });
+CAPTIONS["301"] = "new reel #msgOnly";
+const a201 = await l2("media_id=201");
+assert(a201.found && a201.mode === "link" && a201.payload === "https://a.com/1" && a201.button === "Link", "v2: old link videos keep the link as payload + default button");
+const a202 = await l2("media_id=202");
+assert(a202.mode === "message" && a202.payload === "msg:202" && a202.message === "Steps:\n1- a\n2- b" && !a202.hasLink && a202.button === "Steps 📋", "v2: message-only video");
+const a203 = await l2("media_id=203");
+assert(a203.mode === "both" && a203.hasLink && a203.hasMessage && a203.button === "Get it", "v2: message + link");
+assert((await l2("media_id=204")).mode === "link", "v2: 'both' without a message acts as link");
+assert(!(await l2("media_id=205")).found, "v2: empty message = not active");
+const a206 = await l2("media_id=206");
+assert(a206.mode === "link" && a206.button.length === 20 && (await (await admin.GET(req("/api/admin?action=config"))).json()).config.posts["206"].message.length === 1000, "v2: bad mode -> link, button 20 / message 1000 chars max");
+assert((await l2("payload=msg:203")).message === "Read this", "v2: tapped button payload returns the message");
+const pOld = await l2("payload=" + encodeURIComponent("https://old.com/x"));
+assert(pOld.found && pOld.mode === "link" && pOld.link === "https://old.com/x", "v2: buttons sent before v2 (link payload) still work");
+assert((await v2.GET(new Request("https://x/api/link-v2?payload=hack"))).status === 400, "v2: unknown payload rejected");
+const a301 = await l2("media_id=301");
+assert(a301.mode === "message" && a301.via === "caption" && a301.payload === "msg:301", "v2: scheduled video can be message-only");
+assert((await l2("payload=msg:301")).message === "Coming soon steps", "v2: scheduled message via payload");
+assert(!(await lk("202")).found && (await lk("201")).link === "https://a.com/1", "v1 /api/link unchanged: link videos work, message-only ignored");
+
 await save({ ...cfg, enabled: false });
 assert(!(await lk("111")).found, "global switch off stops all links");
 globalThis.fetch = realFetch;

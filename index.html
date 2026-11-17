@@ -51,10 +51,19 @@ button:disabled{opacity:.55;cursor:default}
 .banner{border-color:var(--err);margin:14px 0}
 a{color:var(--accent)}
 h2{font-size:16px;margin:0 0 4px}
-.rule{display:grid;grid-template-columns:auto 1fr 1.4fr auto auto;gap:8px;align-items:center;padding:10px 0;border-top:1px solid var(--line)}
+.rule{display:grid;grid-template-columns:auto 1fr auto auto;gap:8px;align-items:center;padding:10px 0;border-top:1px solid var(--line)}
 .rule:first-child{border-top:0}
 .icon-btn{padding:6px 10px;color:var(--err);justify-self:end}
-@media (max-width:700px){.rule{grid-template-columns:auto 1fr auto auto}.rule .rlink{grid-column:1/-1}}
+.rule .rmore{grid-column:1/-1;display:flex;flex-direction:column;gap:8px}
+textarea{width:100%;min-height:90px;resize:vertical;padding:9px 11px;border:1px solid var(--line);border-radius:9px;background:var(--field);color:var(--text);font:inherit;line-height:1.5}
+textarea:focus{outline:2px solid var(--accent);outline-offset:-1px}
+textarea.bad{border-color:var(--err)}
+.seg{display:inline-flex;align-self:flex-start;border:1px solid var(--line);border-radius:9px;overflow:hidden;flex-wrap:wrap}
+.seg button{border:0;border-radius:0;padding:6px 10px;font-size:13px;background:transparent;color:var(--muted)}
+.seg button+button{border-inline-start:1px solid var(--line)}
+.seg button.on{background:var(--accent);color:var(--accent-ink);font-weight:600}
+.lbl{font-size:12px;color:var(--muted);display:flex;justify-content:space-between;gap:8px}
+.btnrow{display:flex;gap:8px;align-items:center}.btnrow input{flex:1}
 </style>
 </head>
 <body>
@@ -73,7 +82,7 @@ h2{font-size:16px;margin:0 0 4px}
   <div class="top">
     <div>
       <h1>لينكات الفيديوهات</h1>
-      <div class="muted">فعّل الفيديو وحط اللينك بتاعه. viaSocket بيرد على أي كومنت عليه ويبعت اللينك ده. الرسايل نفسها بتتعدّل من viaSocket.</div>
+      <div class="muted">فعّل الفيديو واختار الرد: <b>لينك</b>، أو <b>رسالة</b> (خطوات/شرح)، أو <b>رسالة + لينك</b>. viaSocket بيرد على أي كومنت عليه، وبعد ما الشخص يدوس الزرار ويتأكد إنه متابع بيبعتله الرد.</div>
     </div>
     <label class="switch"><input type="checkbox" id="enabled"> <span id="enabledLbl"></span></label>
   </div>
@@ -83,7 +92,7 @@ h2{font-size:16px;margin:0 0 4px}
 
   <div class="stats">
     <div class="stat"><b id="stActive">0</b><span class="muted">فيديو شغال</span></div>
-    <div class="stat"><b id="stMissing">0</b><span class="muted">مفعّل من غير لينك</span></div>
+    <div class="stat"><b id="stMissing">0</b><span class="muted">مفعّل وناقصه حاجة</span></div>
     <div class="stat"><b id="stRules">0</b><span class="muted">فيديو جاي (بالوصف)</span></div>
     <div class="stat"><b id="stLoaded">0</b><span class="muted">بوست ظاهر</span></div>
   </div>
@@ -92,7 +101,7 @@ h2{font-size:16px;margin:0 0 4px}
     <div class="top">
       <div>
         <h2>فيديوهات مجدولة أو لسه جاية</h2>
-        <div class="muted">انستجرام مش بيظهر الفيديوهات المجدولة لحد ما تتنشر. اكتب كلمة أو هاشتاج هيكون في <b>وصف</b> الفيديو + اللينك، وأول ما الفيديو ينزل ويجيله كومنت اللينك هيتبعت لوحده.</div>
+        <div class="muted">انستجرام مش بيظهر الفيديوهات المجدولة لحد ما تتنشر. اكتب كلمة أو هاشتاج هيكون في <b>وصف</b> الفيديو + الرد (لينك أو رسالة)، وأول ما الفيديو ينزل ويجيله كومنت الرد هيتبعت لوحده.</div>
       </div>
       <button id="addRule">+ إضافة فيديو جاي</button>
     </div>
@@ -127,8 +136,46 @@ const store = { get(){ try { return sessionStorage.getItem("adm") || ""; } catch
 const norm = (s) => String(s || "").toLowerCase().replace(/[\u064B-\u0652\u0640]/g, "").replace(/[أإآ]/g, "ا").replace(/ى/g, "ي").replace(/ة/g, "ه").replace(/\s+/g, " ").trim();
 function ruleFor(caption){
   const c = norm(caption); if (!c) return null; let best = null;
-  for (const r of CFG.rules || []) { const m = norm(r.match); if (r.enabled && m && c.includes(m) && isLink(r.link) && (!best || m.length > norm(best.match).length)) best = r; }
+  for (const r of CFG.rules || []) { const m = norm(r.match); if (r.enabled && m && c.includes(m) && complete(r) && (!best || m.length > norm(best.match).length)) best = r; }
   return best;
+}
+const MODES = { link: "لينك", message: "رسالة", both: "رسالة + لينك" };
+const modeOf = (e) => MODES[e && e.mode] ? e.mode : "link";
+const hasMsg = (e) => !!String((e && e.message) || "").trim();
+// what is missing for this reply type ("" = complete)
+function missing(e){
+  const m = modeOf(e), l = isLink(e.link), t = hasMsg(e);
+  if (m === "link") return l ? "" : "محتاج لينك";
+  if (m === "message") return t ? "" : "محتاج رسالة";
+  return l && t ? "" : !l && !t ? "محتاج رسالة ولينك" : !l ? "محتاج لينك" : "محتاج رسالة";
+}
+const complete = (e) => !missing(e);
+// mode switch + link + message + button title, bound to object o
+function replyFields(o, onChange){
+  const box = document.createElement("div"); box.style.cssText = "display:flex;flex-direction:column;gap:8px";
+  box.innerHTML = `
+    <div class="seg" role="group" aria-label="نوع الرد">${Object.entries(MODES).map(([k, v]) => `<button type="button" data-m="${k}">${v}</button>`).join("")}</div>
+    <div data-show="message"><div class="lbl"><span>الرسالة</span><span data-count></span></div>
+      <textarea dir="auto" maxlength="1000" placeholder="مثلاً: الخطوات:&#10;1- ...&#10;2- ..."></textarea></div>
+    <div data-show="link"><input type="url" dir="ltr" placeholder="https://..." aria-label="اللينك"></div>
+    <div><div class="lbl"><span>اسم الزرار اللي في أول رسالة</span><span>20 حرف بالكتير</span></div>
+      <div class="btnrow"><input type="text" dir="auto" maxlength="20" placeholder="Link" aria-label="اسم الزرار"></div></div>`;
+  const ta = box.querySelector("textarea"), ln = box.querySelector("input[type=url]"), bt = box.querySelector(".btnrow input"), cnt = box.querySelector("[data-count]");
+  ta.value = o.message || ""; ln.value = o.link || ""; bt.value = o.button || "";
+  const sync = () => {
+    const m = modeOf(o);
+    box.querySelectorAll(".seg button").forEach(b => b.classList.toggle("on", b.dataset.m === m));
+    box.querySelector('[data-show=message]').classList.toggle("hide", m === "link");
+    box.querySelector('[data-show=link]').classList.toggle("hide", m === "message");
+    cnt.textContent = ta.value.length + " / 1000";
+    ln.classList.toggle("bad", o.enabled !== false && m !== "message" && ln.value.trim() !== "" && !isLink(ln.value));
+  };
+  box.querySelectorAll(".seg button").forEach(b => b.addEventListener("click", () => { o.mode = b.dataset.m; sync(); onChange(); }));
+  ta.addEventListener("input", () => { o.message = ta.value; sync(); onChange(); });
+  ln.addEventListener("input", () => { o.link = ln.value.trim(); sync(); onChange(); });
+  bt.addEventListener("input", () => { o.button = bt.value.trim(); onChange(); });
+  sync();
+  return box;
 }
 const isLink = (s) => /^https?:\/\/\S+$/i.test((s || "").trim());
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -181,18 +228,18 @@ document.querySelectorAll(".filters button").forEach(b => b.addEventListener("cl
 $("#search").addEventListener("input", (e) => { QUERY = e.target.value.trim().toLowerCase(); render(); });
 
 function status(p, m){
-  if (!p) { const r = m && ruleFor(m.caption); if (r) return ["ok", "شغال (من الوصف: " + r.match + ")"]; }
+  if (!p) { const r = m && ruleFor(m.caption); if (r) return ["ok", "شغال: " + MODES[modeOf(r)] + " (من الوصف: " + r.match + ")"]; }
   if (!p || !p.enabled) return ["off", "مش متفعّل"];
-  if (!isLink(p.link)) return ["warn", "محتاج لينك"];
-  return ["ok", "شغال"];
+  if (!complete(p)) return ["warn", missing(p)];
+  return ["ok", "شغال: " + MODES[modeOf(p)]];
 }
 
 function updateStats(){
   const posts = Object.values(CFG.posts || {});
-  $("#stActive").textContent = posts.filter(p => p.enabled && isLink(p.link)).length;
-  $("#stMissing").textContent = posts.filter(p => p.enabled && !isLink(p.link)).length;
+  $("#stActive").textContent = posts.filter(p => p.enabled && complete(p)).length;
+  $("#stMissing").textContent = posts.filter(p => p.enabled && !complete(p)).length;
   $("#stLoaded").textContent = MEDIA.length;
-  $("#stRules").textContent = (CFG.rules || []).filter(r => r.enabled && norm(r.match) && isLink(r.link)).length;
+  $("#stRules").textContent = (CFG.rules || []).filter(r => r.enabled && norm(r.match) && complete(r)).length;
 }
 
 function render() {
@@ -229,26 +276,27 @@ function card(m){
         <label class="switch"><input type="checkbox" data-k="enabled"> رد تلقائي</label>
         <span class="pill"></span>
       </div>
-      <input type="url" dir="ltr" data-k="link" placeholder="https://..." aria-label="لينك الفيديو">
     </div>`;
-  const chk = el.querySelector('[data-k=enabled]'), inp = el.querySelector('[data-k=link]'), pill = el.querySelector(".pill");
-  chk.checked = !!p.enabled; inp.value = p.link || "";
+  const chk = el.querySelector('[data-k=enabled]'), pill = el.querySelector(".pill");
+  // edits go to a draft object that becomes the saved entry on the first change
+  const draft = CFG.posts[m.id] || { enabled: false, link: "", mode: "link", message: "", button: "" };
+  chk.checked = !!draft.enabled;
   const refresh = () => {
     const pc = CFG.posts[m.id];
     const [cls, txt] = status(pc, m);
     pill.className = "pill " + cls; pill.textContent = txt;
     el.className = "card post" + (pc && pc.enabled ? " on" : "");
-    inp.classList.toggle("bad", !!(pc && pc.enabled && inp.value.trim() && !isLink(inp.value)));
     updateStats();
   };
-  const upd = () => {
-    const pc = CFG.posts[m.id] || (CFG.posts[m.id] = { enabled: false, link: "" });
-    pc.enabled = chk.checked; pc.link = inp.value.trim();
-    pc.caption = (m.caption || "").slice(0, 120); pc.permalink = m.permalink || "";
+  const upd = (fromField) => {
+    if (fromField && !chk.checked) chk.checked = true;
+    CFG.posts[m.id] = draft;
+    draft.enabled = chk.checked;
+    draft.caption = (m.caption || "").slice(0, 120); draft.permalink = m.permalink || "";
     refresh(); markDirty();
   };
-  chk.addEventListener("change", upd);
-  inp.addEventListener("input", () => { if (inp.value.trim() && !chk.checked) chk.checked = true; upd(); });
+  chk.addEventListener("change", () => upd(false));
+  el.querySelector(".body").appendChild(replyFields(draft, () => upd(true)));
   refresh();
   return el;
 }
@@ -261,29 +309,29 @@ function renderRules(){
     row.innerHTML = `
       <label class="switch" title="شغال"><input type="checkbox"></label>
       <input type="text" dir="auto" placeholder="كلمة/هاشتاج من الوصف، مثلاً #tool25" aria-label="كلمة من الوصف">
-      <input type="url" dir="ltr" class="rlink" placeholder="https://..." aria-label="اللينك">
       <span class="pill"></span>
-      <button class="icon-btn" title="حذف" aria-label="حذف">✕</button>`;
-    const [chk, mt, ln] = row.querySelectorAll("input"); const pill = row.querySelector(".pill");
-    chk.checked = r.enabled !== false; mt.value = r.match || ""; ln.value = r.link || "";
+      <button class="icon-btn" title="حذف" aria-label="حذف">✕</button>
+      <div class="rmore"></div>`;
+    const [chk, mt] = row.querySelectorAll("input"); const pill = row.querySelector(".pill");
+    chk.checked = r.enabled !== false; mt.value = r.match || "";
     const refresh = () => {
-      const ok = r.enabled && norm(r.match) && isLink(r.link);
+      const ok = r.enabled && norm(r.match) && complete(r);
       const used = ok && MEDIA.some(m => !CFG.posts[m.id] && ruleFor(m.caption) === r);
       pill.className = "pill " + (!r.enabled ? "off" : ok ? "ok" : "warn");
-      pill.textContent = !r.enabled ? "متوقف" : !ok ? "ناقص" : used ? "اتربط بفيديو ✓" : "مستني الفيديو";
+      pill.textContent = !r.enabled ? "متوقف" : !norm(r.match) ? "ناقص الكلمة" : !ok ? missing(r) : used ? "اتربط بفيديو ✓" : "مستني الفيديو";
       mt.classList.toggle("bad", r.enabled && !norm(r.match));
-      ln.classList.toggle("bad", r.enabled && ln.value.trim() !== "" && !isLink(ln.value));
       updateStats();
     };
-    const upd = () => { r.enabled = chk.checked; r.match = mt.value.trim(); r.link = ln.value.trim(); refresh(); markDirty(); };
-    chk.addEventListener("change", upd); mt.addEventListener("input", upd); ln.addEventListener("input", upd);
+    const upd = () => { r.enabled = chk.checked; r.match = mt.value.trim(); refresh(); markDirty(); };
+    chk.addEventListener("change", upd); mt.addEventListener("input", upd);
+    row.querySelector(".rmore").appendChild(replyFields(r, () => { refresh(); markDirty(); }));
     mt.addEventListener("change", render); // re-check which posts match
     row.querySelector("button").addEventListener("click", () => { CFG.rules.splice(i, 1); renderRules(); render(); markDirty(); });
     refresh(); box.appendChild(row);
   });
 }
 $("#addRule").addEventListener("click", () => {
-  CFG.rules.unshift({ id: String(Date.now()), match: "", link: "", enabled: true });
+  CFG.rules.unshift({ id: String(Date.now()), match: "", link: "", enabled: true, mode: "link", message: "", button: "" });
   renderRules(); markDirty(); $("#rules input[type=text]").focus();
 });
 
@@ -291,10 +339,10 @@ function markDirty(){ dirty = true; $("#save").disabled = false; $("#saveMsg").c
 window.addEventListener("beforeunload", (e) => { if (dirty) { e.preventDefault(); e.returnValue = ""; } });
 
 $("#save").addEventListener("click", async () => {
-  const badRules = (CFG.rules || []).filter(r => r.enabled && (!norm(r.match) || !isLink(r.link)));
-  if (badRules.length) { $("#saveMsg").className = "msg err"; $("#saveMsg").textContent = `فيه ${badRules.length} فيديو جاي ناقصه الكلمة أو اللينك`; return; }
-  const bad = Object.values(CFG.posts).filter(p => p.enabled && !isLink(p.link));
-  if (bad.length) { $("#saveMsg").className = "msg err"; $("#saveMsg").textContent = `فيه ${bad.length} فيديو مفعّل من غير لينك صحيح (لازم يبدأ بـ https://)`; return; }
+  const badRules = (CFG.rules || []).filter(r => r.enabled && (!norm(r.match) || !complete(r)));
+  if (badRules.length) { $("#saveMsg").className = "msg err"; $("#saveMsg").textContent = `فيه ${badRules.length} فيديو جاي ناقصه الكلمة أو الرد (لينك/رسالة)`; return; }
+  const bad = Object.values(CFG.posts).filter(p => p.enabled && !complete(p));
+  if (bad.length) { $("#saveMsg").className = "msg err"; $("#saveMsg").textContent = `فيه ${bad.length} فيديو مفعّل ناقصه حاجة: ${missing(bad[0])} (اللينك لازم يبدأ بـ https://)`; return; }
   $("#save").disabled = true; $("#saveMsg").className = "msg"; $("#saveMsg").textContent = "بيحفظ...";
   try {
     const d = await api("/api/admin", { method: "POST", body: JSON.stringify({ enabled: CFG.enabled, posts: CFG.posts, rules: CFG.rules }) });
