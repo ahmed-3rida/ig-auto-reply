@@ -29,14 +29,28 @@ async function graph(path) {
 }
 
 // Latest messages of the conversation with this person, newest first: [{ created_time, from: { id }, message }]
+export const lastShape = {}; // for debug: what Instagram returned (keys/counts only)
+
 export async function recentMessages(user) {
   const fields = "messages.limit(10){created_time,from,message}";
   const list = await graph(`/me/conversations?platform=instagram&user_id=${user}&fields=${encodeURIComponent(fields)}`);
   const conv = list.data?.[0];
+  lastShape.conversations = list.data?.length ?? null;
+  lastShape.convKeys = conv ? Object.keys(conv) : [];
   if (!conv) return [];
-  if (conv.messages?.data) return conv.messages.data;
-  const one = await graph(`/${conv.id}?fields=${encodeURIComponent(fields)}`); // fallback if nested fields aren't expanded
-  return one.messages?.data ?? [];
+  let msgs = conv.messages?.data;
+  if (!msgs) {
+    const one = await graph(`/${conv.id}?fields=${encodeURIComponent(fields)}`); // nested fields not expanded
+    lastShape.fallbackKeys = Object.keys(one);
+    msgs = one.messages?.data ?? [];
+  }
+  // Some API versions return only message ids: fetch the details of the newest few.
+  if (msgs.length && !msgs[0].created_time) {
+    lastShape.detailFetch = true;
+    msgs = await Promise.all(msgs.slice(0, 6).map((m) => graph(`/${m.id}?fields=created_time,from,message`).catch(() => ({}))));
+  }
+  lastShape.firstMsgKeys = msgs[0] ? Object.keys(msgs[0]) : [];
+  return msgs;
 }
 
 export function decide(kind, messages, user, now = Date.now()) {
@@ -76,13 +90,15 @@ export async function GET(request) {
       // shape only, never message contents
       const ours = msgs.filter((m) => m?.from?.id && String(m.from.id) !== user);
       result.debug = { messages: msgs.length, ours: ours.length, oursWithText: ours.filter((m) => m.message).length,
-        newestOursAgoSec: ours.length ? Math.round((now - Date.parse(ours[0].created_time)) / 1000) : null };
+        newestOursAgoSec: ours.length ? Math.round((now - Date.parse(ours[0].created_time)) / 1000) : null, shape: lastShape };
       locks.delete(key);
     }
     if (!result.reply) locks.delete(key); // only a passing tap holds the lock
     return Response.json(result, { headers });
   } catch (e) {
     console.error("should-reply: Instagram check failed", e?.message);
-    return Response.json({ reply: true, reason: "check-failed" }, { headers });
+    const out = { reply: true, reason: "check-failed" };
+    if (u.searchParams.get("debug") === "1") { out.error = String(e?.message).slice(0, 200); locks.delete(key); }
+    return Response.json(out, { headers });
   }
 }
