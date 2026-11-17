@@ -70,7 +70,15 @@ export async function GET(request) {
   locks.set(key, now);
 
   try {
-    const result = decide(kind, await recentMessages(user), user, now);
+    const msgs = await recentMessages(user);
+    const result = decide(kind, msgs, user, now);
+    if (u.searchParams.get("debug") === "1") {
+      // shape only, never message contents
+      const ours = msgs.filter((m) => m?.from?.id && String(m.from.id) !== user);
+      result.debug = { messages: msgs.length, ours: ours.length, oursWithText: ours.filter((m) => m.message).length,
+        newestOursAgoSec: ours.length ? Math.round((now - Date.parse(ours[0].created_time)) / 1000) : null };
+      locks.delete(key);
+    }
     if (!result.reply) locks.delete(key); // only a passing tap holds the lock
     return Response.json(result, { headers });
   } catch (e) {
