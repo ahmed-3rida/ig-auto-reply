@@ -5,12 +5,25 @@ process.env.BLOB_READ_WRITE_TOKEN = "test";
 process.env.IG_ACCESS_TOKEN = "tok";
 const CAPTIONS = { "555": "أداة جديدة للتحميل 🔥 #Tool25 جربها", "556": "ريل عادي", "557": "#tool25 و #tool25pro" };
 let CAPTION_CALLS = 0;
+const ago = (sec) => new Date(Date.now() - sec * 1000).toISOString();
+const CONVS = {
+  "10001": [{ created_time: ago(5), from: { id: "10001" }, message: "Link" }],                                   // never answered
+  "10002": [{ created_time: ago(3600), from: { id: "OWN" }, message: "Here's the link 👇" }],                  // got link 1h ago
+  "10003": [{ created_time: ago(3600), from: { id: "OWN" }, message: "Follow first 🙏 then tap Following 👇" }], // only asked to follow
+  "10004": [{ created_time: ago(5), from: { id: "OWN" }, message: "" }],                                       // replied 5s ago
+  "10007": [{ created_time: ago(4), from: { id: "OWN" }, message: "Follow first 🙏 then tap Following 👇" }], // just asked, then followed fast
+  "10005": [{ created_time: ago(90000), from: { id: "OWN" }, message: "Here's the link 👇" }],                 // link 25h ago
+};
 const realFetch = globalThis.fetch;
 globalThis.fetch = async (url) => {
   url = String(url);
   if (url.startsWith("https://blob.test/")) return new Response(globalThis.__blobs.find((x) => x.url === url).body, { status: 200 });
   if (url.includes("/me/media")) {
     return Response.json({ data: [{ id: "M1", caption: "ريل 1", media_type: "VIDEO", media_product_type: "REELS", thumbnail_url: "t", permalink: "p", timestamp: "2026-11-01T00:00:00+0000" }], paging: {} });
+  }
+  if (url.includes("/me/conversations")) {
+    const user = new URL(url).searchParams.get("user_id");
+    return Response.json({ data: CONVS[user] ? [{ id: "c" + user, messages: { data: CONVS[user] } }] : [] });
   }
   const cap = url.match(/\/(\d+)\?fields=caption/);
   if (cap) { CAPTION_CALLS++; return Response.json({ id: cap[1], caption: CAPTIONS[cap[1]] ?? "" }); }
@@ -61,6 +74,20 @@ assert(!(await lk("556")).found, "turned-off rule is ignored");
 assert(!(await lk("333")).found, "a video turned off in the panel is not overridden by a rule");
 const before = CAPTION_CALLS; await lk("555");
 assert(CAPTION_CALLS === before, "captions are cached");
+
+// Repeated taps on Link / Following
+const sr = await import("./api/should-reply.js");
+const ask = async (user, kind) => (await sr.GET(new Request(`https://x/api/should-reply?user=${user}&kind=${kind}`))).json();
+assert((await ask("10001", "link")).reply === true, "first tap gets the link");
+assert((await ask("10001", "link")).reply === false, "a second tap at the same moment is blocked");
+assert((await ask("10002", "link")).reason === "link-already-sent", "link already sent today -> no repeat");
+assert((await ask("10003", "link")).reply === true, "after 'follow first' the follower still gets the link");
+assert((await ask("10004", "link")).reason === "replied-seconds-ago", "rapid taps blocked");
+assert((await ask("10004", "ask")).reason === "asked-seconds-ago", "rapid 'follow first' repeats blocked");
+assert((await ask("10007", "link")).reply === true, "following right after 'follow first' still works");
+assert((await ask("10005", "link")).reply === true, "after 24h they can get it again");
+assert((await ask("10006", "ask")).reply === true, "new person asked to follow");
+assert((await sr.GET(new Request("https://x/api/should-reply?user=abc"))).status === 400, "bad user rejected");
 
 await save({ ...cfg, enabled: false });
 assert(!(await lk("111")).found, "global switch off stops all links");
