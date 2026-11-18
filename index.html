@@ -816,7 +816,7 @@ function refreshEditor() {
   if (gated && S.gateStyle !== "follow") {
     html += `<div class="bub out">${esc(S.firstDm)}<span class="bbtn">${esc(btn)}</span></div><div class="bub in">${esc(btn)}</div>
       <div class="who">لو متابع</div><div class="bub out">${esc(realText)}${real}</div>
-      <div class="who">لو مش متابع</div><div class="bub out">${esc(S.notFollowing)}<span class="bbtn">${esc(S.profileButton)} ↗</span><span class="bbtn">${esc(btn)}</span></div>`;
+      <div class="who">لو مش متابع</div><div class="bub out">${esc(S.notFollowing)}<span class="bbtn">${esc(S.profileButton)} ↗</span><span class="bbtn">${esc(S.gateButton)}</span></div>`;
   } else if (gated) {
     html += `<div class="bub out">${esc(S.gateMessage)}<span class="bbtn">${esc(S.profileButton)} ↗</span><span class="bbtn">${esc(S.gateButton)}</span></div>
       <div class="who">بعد التحقق</div><div class="bub out">${esc(realText)}${real}</div>`;

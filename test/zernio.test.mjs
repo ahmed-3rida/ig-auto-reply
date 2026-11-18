@@ -204,6 +204,7 @@ assert(res.answered === "follow-first" && Z.sent[0].buttons.at(-1).payload === "
   "old Link tap from a non-follower -> «follow first» with a button that checks again");
 res = await (await send(tap(IDM))).json();
 assert(res.skipped === "double-tap" && Z.sent.length === 1, "a double tap gets one answer");
+assert(Z.sent[0].buttons.at(-1).title === c.settings.gateButton, "the retry button is named «عملت فولو», not like the link");
 res = await (await send(tap(IDM, { title: "عملت فولو ✅" }))).json();
 assert(res.answered === "follow-first" && Z.sent.length === 2, "tapping «عملت فولو» right after «follow first» (still not following) gets «not following» again");
 Z.followers.add("U8");
