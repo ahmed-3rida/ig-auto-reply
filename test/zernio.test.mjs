@@ -8,7 +8,7 @@ process.env.ZERNIO_WEBHOOK_SECRET = "whsec";
 delete process.env.IG_ACCESS_TOKEN;
 
 const ACC = "6afd7f3a4a29a11a85dec5e5", PROF = "6afd7f1800e3468668318f56";
-const Z = { autos: new Map(), calls: [], privateReplies: [], publicReplies: [], sent: [], followers: new Set(), seq: 0 };
+const Z = { logs: [], autos: new Map(), calls: [], privateReplies: [], publicReplies: [], sent: [], followers: new Set(), seq: 0 };
 const hex = () => (++Z.seq).toString(16).padStart(24, "a");
 // one automation made directly in Zernio (like the one set up by hand before the panel)
 Z.autos.set("6afd84f0555dda08a89e3f12", { _id: "6afd84f0555dda08a89e3f12", platformPostId: "18098088275062213", trigger: "comment", keywords: [],
@@ -33,6 +33,8 @@ globalThis.fetch = async (url, init = {}) => {
     const a = { ...body, _id: hex(), stats: {} }; Z.autos.set(a._id, a);
     return Response.json({ success: true, automation: a });
   }
+  const lg = path.match(/^\/v1\/comment-automations\/(\w+)\/logs$/);
+  if (lg) return Response.json({ success: true, logs: Z.logs.filter((l) => l.automationId === lg[1]) });
   const m = path.match(/^\/v1\/comment-automations\/(\w+)$/);
   if (m) {
     const a = Z.autos.get(m[1]);
@@ -216,8 +218,10 @@ assert((await (await send(tap("https://github.com/mutonby/openshorts", { sender:
 c.settings.gateStyle = "link";
 c.posts["904"] = { enabled: true, mode: "link", link: "https://z.com", button: "Zed", gate: true, keywords: "zed", matchMode: "word" };
 await save(c);
-const cm = (author, text, follower) => ({ event: "comment.received", account: { username: "a" },
-  comment: { id: "K" + Math.random().toString().slice(2, 8), platformPostId: "904", postId: null, platform: "instagram", text, isReply: false,
+hook.timing.tries = 2; hook.timing.waitMs = 1;
+const a904 = () => autoFor("904")._id;
+const cm = (author, text, follower, cid = "K" + Math.random().toString().slice(2, 8)) => ({ event: "comment.received", account: { username: "a" },
+  comment: { id: cid, platformPostId: "904", postId: null, platform: "instagram", text, isReply: false,
     author: { id: author, instagramProfile: { isFollower: follower } } }, post: { platformPostId: "904", content: "x" } });
 const before = Z.privateReplies.length;
 res = await (await send(cm("A1", "عايز Zed لو سمحت", null))).json();
@@ -226,8 +230,15 @@ assert(res.answered === "tap-first" && Z.privateReplies.at(-1).buttons[0].type =
 assert(Z.publicReplies.at(-1).commentId === Z.privateReplies.at(-1).commentId, "…and the public reply");
 res = await (await send(cm("A2", "zed", false))).json();
 assert(res.answered === "tap-first", "known non-follower also gets the link-looking DM (not «not following»)");
-res = await (await send(cm("A3", "zed", true))).json();
-assert(res.skipped === "follower" && Z.privateReplies.length === before + 2, "known follower is left to Zernio, which sends the real link");
+Z.logs.push({ automationId: a904(), commentId: "CA3", status: "sent" });
+res = await (await send(cm("A3", "zed", true, "CA3"))).json();
+assert(res.skipped === "zernio-sent" && Z.privateReplies.length === before + 2, "a comment Zernio answered (follower) is left alone");
+Z.logs.push({ automationId: a904(), commentId: "CA6", status: "skipped", error: "Audience rule: not_follower", audienceOutcome: "blocked" });
+res = await (await send(cm("A6", "zed", true, "CA6"))).json();
+assert(res.answered === "tap-first", "webhook says follower but Zernio blocked it (stale info) -> the link-looking DM still goes out");
+Z.logs.push({ automationId: a904(), commentId: "CA7", status: "skipped", error: "Already sent DM to this commenter" });
+res = await (await send(cm("A7", "zed", true, "CA7"))).json();
+assert(res.skipped === "zernio-repeat", "someone Zernio already sent the link to is not messaged again");
 res = await (await send(cm("A1", "zed again", null))).json();
 assert(res.skipped === "already-answered", "the same person commenting again gets one DM");
 res = await (await send(cm("A4", "zedd", null))).json();

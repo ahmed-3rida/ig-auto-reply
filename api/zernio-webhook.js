@@ -14,7 +14,7 @@
 // `message.received` with a secret, and put the same secret in Vercel as ZERNIO_WEBHOOK_SECRET.
 import crypto from "node:crypto";
 import { loadConfig, saveConfig, findRuleV2 } from "../lib/config.js";
-import { hasZernio, privateReply, publicReply, sendMessage, isFollower } from "../lib/zernio.js";
+import { hasZernio, privateReply, publicReply, sendMessage, isFollower, automationLogs } from "../lib/zernio.js";
 import { resolve } from "./link-v2.js";
 import { automationBody, createOrAdopt, dmFor, tapFirstDm, usesTapFirst, commentMatches } from "../lib/sync.js";
 
@@ -158,7 +158,11 @@ export async function firstDm(ev, cfg, id) {
   const c = ev.comment, entry = cfg.posts[id];
   if (!entry.enabled || !usesTapFirst(entry, cfg.settings)) return ok({ skipped: "known" });
   if (!commentMatches(entry, c.text)) return ok({ skipped: "no-keyword" });
-  if (c.author?.instagramProfile?.isFollower === true) return ok({ skipped: "follower" }); // Zernio sends the link
+  // Zernio decides first (its own follow lookup, which can differ from the one in this webhook): wait for its
+  // log line on this comment. Sent -> done. Skipped as a repeat -> done. Blocked / not there -> we answer.
+  const verdict = await zernioVerdict(entry.automationId, c.id);
+  if (verdict === "sent") return ok({ skipped: "zernio-sent" });
+  if (verdict === "repeat") return ok({ skipped: "zernio-repeat" });
   const dm = tapFirstDm(id, entry, cfg.settings);
   if (!dm) return ok({ skipped: "nothing-to-send" });
   const key = `${c.author?.id}|${id}`, now = Date.now();
@@ -175,4 +179,24 @@ export async function firstDm(ev, cfg, id) {
   const reply = pick(entry.reply) || pick(cfg.settings.reply);
   if (reply) await publicReply(postId, c.id, reply).catch((e) => console.error("public reply failed", e.message));
   return ok({ answered: "tap-first" });
+}
+
+export const timing = { tries: 4, waitMs: 1200 }; // ~5s max, under Zernio's webhook timeout
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// "sent" | "repeat" | "blocked" | "none" — what the video's Zernio automation did with this comment.
+export async function zernioVerdict(automationId, commentId) {
+  if (!automationId) return "none";
+  for (let i = 0; i < timing.tries; i++) {
+    let log;
+    try { log = (await automationLogs(automationId, 20)).find((l) => l.commentId === commentId); } catch { return "none"; }
+    if (log) {
+      if (["sent", "gated"].includes(log.status)) return "sent";
+      if (/already sent/i.test(log.error ?? "")) return "repeat";
+      if (log.status === "pending" || log.status === "queued") { await sleep(timing.waitMs); continue; }
+      return "blocked";
+    }
+    if (i < timing.tries - 1) await sleep(timing.waitMs);
+  }
+  return "none";
 }
