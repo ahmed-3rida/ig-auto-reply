@@ -10,6 +10,8 @@ export async function GET() {
     out.files = r.blobs.sort((a, b) => new Date(b.uploadedAt) - new Date(a.uploadedAt)).map((b) => ({ at: b.uploadedAt, size: b.size }));
     const newest = r.blobs[0] && await fetch(r.blobs[0].url, { cache: "no-store" });
     out.fetchStatus = newest?.status ?? null;
+    if (newest && !newest.ok) out.fetchBody = (await newest.text()).slice(0, 300);
+    if (r.blobs[0]) out.urlHost = new URL(r.blobs[0].url).host.replace(/^[^.]+/, "<store>");
   } catch (e) {
     out.list = "failed"; out.error = String(e?.message ?? e).slice(0, 300);
   }
