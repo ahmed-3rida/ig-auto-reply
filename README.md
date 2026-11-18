@@ -32,8 +32,11 @@
 
 متنساش **حفظ** بعد أي تعديل (الشريط اللي تحت).
 
+### التخزين
+الإعدادات والأحداث في **Supabase**: جدول `app_config` (صف واحد) وجدول `events`، وعليهم RLS من غير policies، يعني السيرفر بس (بالمفتاح السري) يقدر يقرا ويكتب. أول مرة بعد ما تضيف Supabase، الإعدادات بتتنقل لوحدها من Blob، ولو Blob مش شغال بتتبني من Zernio. ولو Supabase وقع، اللوحة بتكمّل بآخر إعدادات سليمة، أو بتبنيها من Zernio.
+
 ### الإحصائيات
-الأرقام من مصدرين: Zernio (اللي هو بعته، والضغطات على لينكاته) وسجل اللوحة نفسها (ملفات فاضية تحت `events/` في Blob). اللينكات اللي اللوحة بتبعتها بتعدّي على `/api/go` عشان الضغطة تتحسب، وبعدها بتفتح اللينك الحالي للفيديو.
+الأرقام من مصدرين: Zernio (اللي هو بعته، والضغطات على لينكاته) وسجل اللوحة نفسها (جدول `events` في Supabase). اللينكات اللي اللوحة بتبعتها بتعدّي على `/api/go` عشان الضغطة تتحسب، وبعدها بتفتح اللينك الحالي للفيديو.
 
 ## الإعداد (مرة واحدة)
 1. **Vercel → Environment Variables**:
@@ -43,7 +46,9 @@
    | `ZERNIO_API_KEY` | مفتاح Zernio API |
    | `ZERNIO_WEBHOOK_SECRET` | سر الـ webhook (أي نص طويل عشوائي) |
    | `ZERNIO_ACCOUNT_ID` / `ZERNIO_PROFILE_ID` | اختياري: لو مش موجودين، بيستخدم أول حساب انستجرام متوصل |
-   | `BLOB_READ_WRITE_TOKEN` | بيتضاف لوحده لما تربط Blob store |
+   | `SUPABASE_URL` | رابط مشروع Supabase (قاعدة البيانات: الإعدادات + سجل الأحداث للإحصائيات) |
+   | `SUPABASE_SECRET_KEY` | المفتاح السري لـ Supabase (أو `SUPABASE_SERVICE_ROLE_KEY`). للسيرفر بس — متحطوش في أي صفحة |
+   | `BLOB_READ_WRITE_TOKEN` | قديم: بيتستخدم بس لو Supabase مش متضاف، ولنقل الإعدادات أول مرة |
    | `IG_ACCESS_TOKEN` | اختياري: احتياطي لعرض البوستات لو Zernio مش متاح |
 2. **Zernio → Webhooks**: ضيف `https://<موقعك>/api/zernio-webhook` لحدثين: `comment.received` و `message.received`، بنفس قيمة `ZERNIO_WEBHOOK_SECRET`.
    - `comment.received`: لـ «فيديوهات جاية».
@@ -67,7 +72,9 @@
 | `lib/videostats.js` | أداء الفيديوهات (مشاهدات، وصول، تفاعل…) |
 | `lib/health.js` | فحص «حالة النظام» |
 | `lib/autokw.js` | كلمة الفيديو من الوصف («اكتب IDM في الكومنت») |
-| `lib/config.js` | حفظ الإعدادات على Vercel Blob + النصوص الافتراضية |
+| `lib/config.js` | قراية وحفظ الإعدادات (Supabase، أو Blob قديمًا) + النصوص الافتراضية |
+| `lib/db.js` | Supabase عن طريق REST |
+| `lib/rebuild.js` | إعادة بناء الإعدادات من Zernio لو التخزين وقع |
 | `privacy.html` | صفحة الخصوصية |
 
 ## اختبار محلي
