@@ -95,7 +95,7 @@ export async function POST(request) {
 
 // ---- buttons of the old viaSocket DMs ----
 const taps = new Map(); // `${sender}|${payload}` -> time (per instance), so a double tap gets one answer
-const TAP_LOCK_MS = 15_000;
+const TAP_LOCK_MS = 4_000; // only true double taps; a tap on «عملت فولو» right after «follow first» must go through
 
 export async function oldButton(ev) {
   const m = ev.message ?? {}, meta = ev.metadata ?? {};
@@ -108,7 +108,7 @@ export async function oldButton(ev) {
 
   const sender = String(m.sender?.id ?? ""), convId = ev.conversation?.id ?? m.conversationId;
   if (!sender || !convId) return ok({ skipped: "no-sender" });
-  const key = sender + "|" + payload, now = Date.now();
+  const key = [sender, payload, meta.postbackTitle ?? ""].join("|"), now = Date.now();
   for (const [k, t] of taps) if (now - t > TAP_LOCK_MS) taps.delete(k);
   if (taps.has(key)) return ok({ skipped: "double-tap" });
   taps.set(key, now);

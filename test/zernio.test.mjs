@@ -194,6 +194,8 @@ assert(res.answered === "follow-first" && Z.sent[0].buttons.at(-1).payload === I
   "old Link tap from a non-follower -> «follow first» with a button that checks again");
 res = await (await send(tap(IDM))).json();
 assert(res.skipped === "double-tap" && Z.sent.length === 1, "a double tap gets one answer");
+res = await (await send(tap(IDM, { title: "عملت فولو ✅" }))).json();
+assert(res.answered === "follow-first" && Z.sent.length === 2, "tapping «عملت فولو» right after «follow first» (still not following) gets «not following» again");
 Z.followers.add("U8");
 res = await (await send(tap(IDM, { sender: "U8" }))).json();
 assert(res.answered === "link" && Z.sent.at(-1).buttons[0].url === IDM && Z.sent.at(-1).conv === "CONVU8", "follower tapping an old Link button gets the link");
