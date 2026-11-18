@@ -46,6 +46,13 @@ globalThis.fetch = async (url, init = {}) => {
     { id: "18098088275062213", content: "@thesevendogsfilm 🔥", permalink: "https://www.instagram.com/p/Da_MSaTjZqT/", picture: "pic", createdTime: "2026-07-19T20:10:28Z", commentCount: 7 },
     { id: "17978249321939264", content: "GTA 6 نازلة\r\nاكتب GTA في الكومنت وهبعتلك الأداة 📩", permalink: "https://www.instagram.com/reel/DfvN_5btSE2/", createdTime: "2026-11-14T21:55:44Z", commentCount: 1589 },
   ], pagination: { hasMore: true, nextCursor: "CUR" } });
+  if (path === "/v1/analytics" && method === "GET") return Response.json({ overview: { lastSync: "2026-11-18T14:30:14Z" }, pagination: { page: 1, pages: 1 }, posts: [
+    { _id: "z1", content: "اكتب FreeLLMAPI في الكومنت", publishedAt: "2026-11-18T13:16:02Z", mediaProductType: "REELS", platformPostUrl: "https://i/reel/a", thumbnailUrl: "t",
+      platforms: [{ platform: "instagram", platformPostId: "18091667573283321" }], analytics: { views: 1154, reach: 506, likes: 12, comments: 36, shares: 6, saves: 28, engagementRate: 7.11, igReelsAvgWatchTime: 7811, reelsSkipRate: 34.6 } },
+    { _id: "z2", content: "GTA", publishedAt: "2026-11-17T21:26:28Z", mediaProductType: "REELS", platforms: [{ platform: "instagram", platformPostId: "17901732075398544" }], analytics: { views: 9524, reach: 8092, likes: 173, engagementRate: 4.69 } }] });
+  if (path === "/v1/analytics/daily-metrics") return Response.json({ dailyData: [{ date: new Date().toISOString().slice(0, 10), metrics: { views: 500, reach: 300, likes: 20 } }] });
+  if (/^\/v1\/accounts\/\w+\/health$/.test(path)) return Response.json({ status: "healthy", username: "a7med", tokenStatus: { valid: true, expiresIn: "59 days" }, issues: [], inboundActivity: { lastCommentAt: new Date().toISOString() } });
+  if (path === "/v1/webhooks/logs") return Response.json({ logs: Z.whLogs ?? [] });
   const pc = path.match(/^\/v1\/inbox\/comments\/(\w+)$/);
   if (pc && method === "GET") return Response.json({ comments: Z.postComments[pc[1]] ?? [], pagination: { hasMore: false } });
   if (path === "/v1/inbox/conversations" && method === "GET") return Response.json({ data: Z.convs, pagination: { hasMore: false } });
@@ -337,6 +344,37 @@ const st = await (await admin.GET(req("/api/admin?action=stats&days=7"))).json()
 const v905 = st.top.find((x) => x.id === "905");
 assert(st.daily.length === 7 && v905 && v905.clicks >= 1 && v905.links >= 2 && st.totals.answered > 0, "stats: per video and per day");
 assert(typeof st.totals.followRate === "number", "stats: follow rate after the check");
+
+// --- several texts for the first DM and the link DM
+c.settings.linkDm = "اتفضل اللينك 👇\nاللينك أهو 🔗\nدوس على الزرار 👇";
+c.settings.firstDm = "دوس على الزرار تحت 👇\nاضغط تحت وهوصلك 👇";
+c.posts["905"].dmKeywords = false; c.posts["905"].gate = true; c.posts["905"].mode = "link";
+await save(c);
+const a905 = autoFor("905");
+assert(a905.dmMessage === "اتفضل اللينك 👇" && a905.dmMessageVariations.join("|") === "اللينك أهو 🔗|دوس على الزرار 👇" && a905.followGate.message === "دوس على الزرار تحت 👇",
+  "Zernio gets the first «لينك» text + the others as variations");
+const sync2 = await import("../lib/sync.js");
+const seenFirst = new Set(), seenLink = new Set();
+for (let i = 0; i < 60; i++) { seenFirst.add(sync2.tapFirstDm("905", c.posts["905"], c.settings).dmMessage); seenLink.add(sync2.dmFor(c.posts["905"], c.settings).dmMessage); }
+assert(seenFirst.size === 2 && seenLink.size === 3, "the panel picks a random text for the first DM and the link DM");
+
+// --- system status
+Z.whLogs = [
+  { event: "message.received", status: "success", createdAt: new Date().toISOString(), responseBody: '{"ok":true,"skipped":"standby"}',
+    requestPayload: { message: { sender: { username: "hossein" } }, metadata: { postbackTitle: "MDM" } } },
+  { event: "comment.received", status: "success", createdAt: new Date().toISOString(), responseBody: '{"ok":true}' },
+  { event: "comment.received", status: "failed", createdAt: new Date().toISOString(), errorMessage: "The operation was aborted" },
+];
+const hs = await (await admin.GET(req("/api/admin?action=health"))).json();
+const ck = (k) => hs.checks.find((x) => x.key === k);
+assert(ck("zernio").level === "green" && ck("webhook").level === "red" && ck("lost").level === "red" && hs.lost[0].user === "hossein" && hs.level === "red",
+  "status page: account ok, webhook failures and lost taps are flagged, with who was lost");
+
+// --- video stats
+const vs = await (await admin.GET(req("/api/admin?action=videostats&days=7"))).json();
+assert(vs.posts.length === 2 && vs.posts[0].id === "18091667573283321" && vs.posts[0].views === 1154 && vs.posts[0].avgWatch === 7.8 && vs.totals.views === 10678,
+  "video stats: per video views, reach, likes… and totals");
+assert(vs.daily.length === 7 && vs.daily.at(-1).views === 500, "video stats: account views per day");
 
 globalThis.fetch = realFetch;
 console.log("all good");

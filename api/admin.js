@@ -9,6 +9,8 @@ import { hasZernio, listAutomations, listPosts, deleteAutomation, ZernioError } 
 import { syncAll, adoptExternal, statsByPost } from "../lib/sync.js";
 import { comments as backfillComments, dms as backfillDms } from "../lib/backfill.js";
 import { stats } from "../lib/stats.js";
+import { health } from "../lib/health.js";
+import { videoStats } from "../lib/videostats.js";
 import { baseOf } from "../lib/respond.js";
 
 export const maxDuration = 60; // the «answer what was missed» buttons work in batches of up to ~45s
@@ -97,6 +99,16 @@ export async function GET(request) {
       comments: m.comments_count ?? null,
     }));
     return json({ items, after: data.paging?.next ? data.paging?.cursors?.after : null });
+  }
+
+  if (action === "health") {
+    try { return json(await health(await loadConfig({ fresh: true }))); } catch (e) { return json({ error: e.message }, 502); }
+  }
+
+  if (action === "videostats") {
+    if (!hasZernio()) return json({ error: "Zernio مش متوصل" }, 400);
+    const days = Math.min(90, Math.max(7, Number(u.searchParams.get("days")) || 30));
+    try { return json(await videoStats({ days })); } catch (e) { return json({ error: e.message }, 502); }
   }
 
   if (action === "stats") {
