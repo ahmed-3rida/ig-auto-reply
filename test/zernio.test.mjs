@@ -81,13 +81,20 @@ let r = await save(d.config);
 assert(r.ok && r.report.failed === 0, "first save works");
 assert(r.report.created === 12, "the 12 old viaSocket videos get a Zernio automation each");
 const gta = autoFor("17978249321939264");
-assert(gta.isActive && gta.keywords.length === 0 && gta.buttons[0].url === "https://github.com/mutonby/openshorts" && gta.buttons[0].type === "url"
-  && gta.dmMessage === "اتفضل اللينك 👇" && gta.commentReply === "بعتلك في الخاص 📩", "link video -> DM text + link button + default public reply");
+assert(gta.isActive && gta.keywords.length === 0 && gta.dmMessage === "اتفضل اللينك 👇" && gta.commentReply === "بعتلك في الخاص 📩",
+  "link video -> link text + default public reply");
+assert(gta.buttons[0].type === "postback" && gta.buttons[0].title === "Link" && gta.buttons[0].payload === "msg:17978249321939264"
+  && gta.audience.followerStatus === "any", "default (link style): the first DM is always the link text with a tap button; the tap does the follow check");
 assert(gta.commentReplyVariations.length === 2 && gta.commentReplyVariations[1] === "تم الإرسال ✅", "default public reply: each line is a random variation");
-assert(gta.audience.followerStatus === "follower" && gta.audience.whenUnknown === "verify", "follow check is on by default");
-assert(gta.followGate.message === "اتفضل اللينك 👇" && gta.followGate.buttonLabel === "Link" && !gta.followGate.profileButtonLabel,
-  "default first DM looks like the link: link text + button named like the link button, no profile button");
-assert(Z.autos.get("6afd84f0555dda08a89e3f12").buttons?.[0]?.url === "https://www.instagram.com/p/Da_MSaTjZqT/", "the hand-made automation is updated in place, not duplicated");
+Z.followers.add("U4");
+let tapRes = await (await (await import("../api/zernio-webhook.js")).oldButton({ message: { platform: "instagram", direction: "incoming", sender: { id: "U4" } },
+  conversation: { id: "CONVU4" }, metadata: { postbackPayload: "msg:17978249321939264" }, account: { username: "a" } })).json();
+assert(tapRes.answered === "link" && Z.sent.at(-1).buttons[0].url === "https://github.com/mutonby/openshorts" && Z.sent.at(-1).buttons[0].type === "url",
+  "a follower tapping that button gets the real link button");
+tapRes = await (await (await import("../api/zernio-webhook.js")).oldButton({ message: { platform: "instagram", direction: "incoming", sender: { id: "U3" } },
+  conversation: { id: "CONVU3" }, metadata: { postbackPayload: "msg:17978249321939264" }, account: { username: "a" } })).json();
+assert(tapRes.answered === "follow-first" && Z.sent.at(-1).buttons.at(-1).payload === "msg:17978249321939264", "a non-follower gets «follow first» with the same button to try again");
+assert(Z.autos.get("6afd84f0555dda08a89e3f12").buttons?.[0]?.payload === "msg:18098088275062213", "the hand-made automation is updated in place, not duplicated");
 assert([...Z.autos.values()].filter((a) => a.platformPostId === "18098088275062213").length === 1, "still one automation on that post");
 
 // --- saving again without changes sends nothing
@@ -107,9 +114,11 @@ const g2 = autoFor("17978249321939264");
 assert(g2.dmMessage === "الأداة دي 👇" && g2.buttons[0].title === "Open 🔗" && g2.keywords.join("|") === "GTA|جتا" && g2.matchMode === "word", "edited video: text, button, trigger words");
 assert(g2.commentReply === "بعتلك ✅" && g2.commentReplyVariations[0] === "شوف الخاص 📩", "each line of the reply is a variation");
 assert(g2.audience.followerStatus === "any", "follow check can be turned off per video");
-c.settings.gateStyle = "link"; await save(c);
+c.settings.gateStyle = "link"; c.posts["17978249321939264"].gate = true; await save(c);
 const g3 = autoFor("17978249321939264");
-assert(g3.followGate.message === "اتفضل اللينك 👇" && g3.followGate.buttonLabel === "Open 🔗", "link style: first DM is the link text with the video's own button name (its message waits for the check)");
+assert(g3.dmMessage === "اتفضل اللينك 👇" && g3.buttons[0].title === "Open 🔗" && g3.buttons[0].type === "postback",
+  "link style: first DM is the link text with the video's own button name (its message waits for the check)");
+c.posts["17978249321939264"].gate = false;
 c.settings.gateStyle = "follow"; await save(c);
 assert(autoFor("17988282846093039").followGate.buttonLabel === "تابعت ✅", "changing a global text updates every video");
 const def = autoFor("17988282846093039");

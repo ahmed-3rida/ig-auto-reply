@@ -5,9 +5,9 @@
 // and if a rule matches it: saves the video with the rule's settings, creates its Zernio automation, and answers
 // that first comment itself (the automation only answers comments posted after it exists).
 //
-// It also answers the buttons of DMs sent by the old viaSocket flows (event: message.received): their payload is
-// the link itself (v1) or "msg:<media_id>" (v2). Zernio doesn't know those buttons, so without this a tap gets
-// no answer. A tap is checked for a follow (asked fresh from Instagram) and gets the link, or «follow first»
+// It also answers link buttons (event: message.received) whose payload is the link itself (old viaSocket v1)
+// or "msg:<media_id>" (old viaSocket v2, and the first DM of every video in the panel's "link" style).
+// Zernio doesn't handle those buttons, so without this a tap gets no answer. A tap is checked for a follow (asked fresh from Instagram) and gets the link, or «follow first»
 // with a button carrying the same payload so the next tap checks again.
 //
 // Setup: in Zernio add a webhook to https://<your-site>/api/zernio-webhook for `comment.received` and
