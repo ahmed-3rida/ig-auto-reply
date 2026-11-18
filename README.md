@@ -37,7 +37,9 @@
    | `ZERNIO_ACCOUNT_ID` / `ZERNIO_PROFILE_ID` | اختياري: لو مش موجودين، بيستخدم أول حساب انستجرام متوصل |
    | `BLOB_READ_WRITE_TOKEN` | بيتضاف لوحده لما تربط Blob store |
    | `IG_ACCESS_TOKEN` | اختياري: احتياطي لعرض البوستات لو Zernio مش متاح |
-2. **Zernio → Webhooks**: ضيف `https://<موقعك>/api/zernio-webhook` لحدث `comment.received`، بنفس قيمة `ZERNIO_WEBHOOK_SECRET`. ده مطلوب بس لـ «فيديوهات جاية».
+2. **Zernio → Webhooks**: ضيف `https://<موقعك>/api/zernio-webhook` لحدثين: `comment.received` و `message.received`، بنفس قيمة `ZERNIO_WEBHOOK_SECRET`.
+   - `comment.received`: لـ «فيديوهات جاية».
+   - `message.received`: عشان زراير الرسايل القديمة اللي viaSocket بعتها («Link» و«Following») تفضل شغالة. الزرار بيتأكد من الفولو ويبعت اللينك، أو «اعمل فولو الأول».
 3. **انستجرام**: خلّي Zernio هو التطبيق الأساسي للرسايل (Settings ← Messages ← Connected tools، أو Conversation routing في Meta Business Suite). من غير الخطوة دي، زرار «عملت فولو» مش هيرد.
 4. **وقّف flows بتاعة viaSocket** (Comment Reply v2 و Link Button v2) **في نفس الوقت** اللي تدوس فيه أول حفظ. لو الاتنين شغالين، الناس هتوصلها رسالتين.
 5. افتح اللوحة ودوس **حفظ** مرة واحدة: الـ 12 فيديو القديمين بيتعملهم automations على Zernio.

@@ -5,11 +5,17 @@
 // and if a rule matches it: saves the video with the rule's settings, creates its Zernio automation, and answers
 // that first comment itself (the automation only answers comments posted after it exists).
 //
-// Setup: in Zernio add a webhook to https://<your-site>/api/zernio-webhook for `comment.received`
-// with a secret, and put the same secret in Vercel as ZERNIO_WEBHOOK_SECRET.
+// It also answers the buttons of DMs sent by the old viaSocket flows (event: message.received): their payload is
+// the link itself (v1) or "msg:<media_id>" (v2). Zernio doesn't know those buttons, so without this a tap gets
+// no answer. A tap is checked for a follow (asked fresh from Instagram) and gets the link, or «follow first»
+// with a button carrying the same payload so the next tap checks again.
+//
+// Setup: in Zernio add a webhook to https://<your-site>/api/zernio-webhook for `comment.received` and
+// `message.received` with a secret, and put the same secret in Vercel as ZERNIO_WEBHOOK_SECRET.
 import crypto from "node:crypto";
 import { loadConfig, saveConfig, findRuleV2 } from "../lib/config.js";
-import { hasZernio, privateReply, publicReply } from "../lib/zernio.js";
+import { hasZernio, privateReply, publicReply, sendMessage, isFollower } from "../lib/zernio.js";
+import { resolve } from "./link-v2.js";
 import { automationBody, createOrAdopt, dmFor } from "../lib/sync.js";
 
 const env = (k, d = "") => process.env[k] ?? d;
@@ -32,6 +38,7 @@ export async function POST(request) {
   }
   let ev;
   try { ev = JSON.parse(raw); } catch { return Response.json({ error: "bad json" }, { status: 400 }); }
+  if (ev.event === "message.received") return oldButton(ev);
   if (ev.event !== "comment.received" || ev.comment?.platform !== "instagram") return ok({ skipped: "event" });
 
   const c = ev.comment, id = String(c.platformPostId ?? ev.post?.platformPostId ?? "");
@@ -83,5 +90,59 @@ export async function POST(request) {
     return Response.json({ error: e.message }, { status: 500 });
   } finally {
     busy.delete(id);
+  }
+}
+
+// ---- buttons of the old viaSocket DMs ----
+const taps = new Map(); // `${sender}|${payload}` -> time (per instance), so a double tap gets one answer
+const TAP_LOCK_MS = 15_000;
+
+export async function oldButton(ev) {
+  const m = ev.message ?? {}, meta = ev.metadata ?? {};
+  const payload = String(meta.postbackPayload ?? "").trim();
+  if (m.platform !== "instagram" || m.direction !== "incoming" || !payload) return ok({ skipped: "not-a-button" });
+  const isOld = /^https?:\/\/\S+$/i.test(payload) || /^msg:\d+$/.test(payload);
+  if (!isOld) return ok({ skipped: "not-old-button" });        // Zernio's own buttons are Zernio's job
+  if (meta.standby) return ok({ skipped: "standby" });          // another app owns the chat: we can't answer
+  if (!hasZernio()) return ok({ skipped: "no-zernio" });
+
+  const sender = String(m.sender?.id ?? ""), convId = ev.conversation?.id ?? m.conversationId;
+  if (!sender || !convId) return ok({ skipped: "no-sender" });
+  const key = sender + "|" + payload, now = Date.now();
+  for (const [k, t] of taps) if (now - t > TAP_LOCK_MS) taps.delete(k);
+  if (taps.has(key)) return ok({ skipped: "double-tap" });
+  taps.set(key, now);
+
+  const cfg = await loadConfig();
+  if (!cfg.enabled) return ok({ skipped: "off" });
+  // what this button stands for: a bare link, or a video's reply in the panel
+  let entry;
+  if (payload.startsWith("msg:")) {
+    const r = await resolve(payload.slice(4));
+    if (!r.found) return ok({ skipped: "video-off" });
+    entry = { enabled: true, mode: r.mode, link: r.link, message: r.message, button: r.button, gate: cfg.posts[payload.slice(4)]?.gate !== false };
+  } else {
+    const post = Object.values(cfg.posts).find((p) => p.link === payload);
+    if (post && !post.enabled) return ok({ skipped: "video-off" });
+    entry = { enabled: true, mode: "link", link: payload, button: post?.button || "", gate: post ? post.gate !== false : true };
+  }
+
+  try {
+    const follows = entry.gate ? await isFollower(sender) : true;
+    if (follows) {
+      const dm = dmFor(entry, cfg.settings);
+      await sendMessage(convId, dm.dmMessage, dm.buttons);
+      return ok({ answered: "link" });
+    }
+    const handle = ev.account?.username;
+    await sendMessage(convId, follows === false ? cfg.settings.notFollowing : cfg.settings.gateMessage, [
+      ...(handle ? [{ type: "url", title: cfg.settings.profileButton, url: `https://www.instagram.com/${handle}/` }] : []),
+      { type: "postback", title: cfg.settings.gateButton, payload },
+    ]);
+    return ok({ answered: "follow-first" });
+  } catch (e) {
+    taps.delete(key);
+    console.error("old button", e.message);
+    return Response.json({ error: e.message }, { status: 500 });
   }
 }

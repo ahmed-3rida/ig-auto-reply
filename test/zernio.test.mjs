@@ -8,7 +8,7 @@ process.env.ZERNIO_WEBHOOK_SECRET = "whsec";
 delete process.env.IG_ACCESS_TOKEN;
 
 const ACC = "6afd7f3a4a29a11a85dec5e5", PROF = "6afd7f1800e3468668318f56";
-const Z = { autos: new Map(), calls: [], privateReplies: [], publicReplies: [], seq: 0 };
+const Z = { autos: new Map(), calls: [], privateReplies: [], publicReplies: [], sent: [], followers: new Set(), seq: 0 };
 const hex = () => (++Z.seq).toString(16).padStart(24, "a");
 // one automation made directly in Zernio (like the one set up by hand before the panel)
 Z.autos.set("6afd84f0555dda08a89e3f12", { _id: "6afd84f0555dda08a89e3f12", platformPostId: "18098088275062213", trigger: "comment", keywords: [],
@@ -44,6 +44,10 @@ globalThis.fetch = async (url, init = {}) => {
     { id: "18098088275062213", content: "@thesevendogsfilm 🔥", permalink: "https://www.instagram.com/p/Da_MSaTjZqT/", picture: "pic", createdTime: "2026-07-19T20:10:28Z", commentCount: 7 },
     { id: "17978249321939264", content: "GTA", permalink: "https://www.instagram.com/reel/DfvN_5btSE2/", createdTime: "2026-11-14T21:55:44Z", commentCount: 1589 },
   ], pagination: { hasMore: true, nextCursor: "CUR" } });
+  const fs = path.match(/^\/v1\/accounts\/\w+\/follow-status\/(\w+)$/);
+  if (fs) return Response.json({ userId: fs[1], isFollower: Z.followers.has(fs[1]), refreshed: u.searchParams.get("refresh") === "true" });
+  const sm = path.match(/^\/v1\/inbox\/conversations\/(\w+)\/messages$/);
+  if (sm && method === "POST") { Z.sent.push({ conv: sm[1], ...body }); return Response.json({ success: true }); }
   const pr = path.match(/^\/v1\/inbox\/comments\/(\w+)\/(\w+)\/private-reply$/);
   if (pr) { Z.privateReplies.push({ postId: pr[1], commentId: pr[2], ...body }); return Response.json({ success: true }); }
   const pub = path.match(/^\/v1\/inbox\/comments\/(\w+)$/);
@@ -162,6 +166,30 @@ assert(res.answered && /اكتب كومنت تاني/.test(Z.privateReplies.at(-
 const p2 = { ...ev("779", "hi", true) }; p2.post.content = "ريل عادي";
 res = await (await send(p2)).json();
 assert(res.skipped === "no-rule" && !autoFor("779"), "videos without a matching rule are ignored");
+
+// --- old viaSocket buttons (message.received)
+const tap = (payload, { sender = "U9", standby = false, title = "Link" } = {}) => ({ event: "message.received", account: { username: "a7med.salman.3rida" },
+  conversation: { id: "CONV" + sender }, message: { platform: "instagram", direction: "incoming", text: title, sender: { id: sender } },
+  metadata: { postbackPayload: payload, postbackTitle: title, ...(standby ? { standby: true } : {}) } });
+const IDM = "https://misterdownloadmanager.com/";
+Z.sent = [];
+res = await (await send(tap(IDM))).json();
+assert(res.answered === "follow-first" && Z.sent[0].buttons.at(-1).payload === IDM && Z.sent[0].buttons.at(-1).type === "postback",
+  "old Link tap from a non-follower -> «follow first» with a button that checks again");
+res = await (await send(tap(IDM))).json();
+assert(res.skipped === "double-tap" && Z.sent.length === 1, "a double tap gets one answer");
+Z.followers.add("U8");
+res = await (await send(tap(IDM, { sender: "U8" }))).json();
+assert(res.answered === "link" && Z.sent.at(-1).buttons[0].url === IDM && Z.sent.at(-1).conv === "CONVU8", "follower tapping an old Link button gets the link");
+c.posts["903"] = { enabled: true, mode: "both", message: "اقرا ده", link: "https://m.com", gate: false };
+await save(c);
+res = await (await send(tap("msg:903", { sender: "U7" }))).json();
+assert(res.answered === "link" && Z.sent.at(-1).dmMessage === undefined && Z.sent.at(-1).message === "اقرا ده" && Z.sent.at(-1).buttons[0].url === "https://m.com",
+  "old v2 button (msg:<id>) sends that video's current message + link; its follow check setting is respected");
+assert((await (await send(tap(IDM, { sender: "U6", standby: true }))).json()).skipped === "standby", "standby taps are left alone");
+assert((await (await send(tap("zernio_follow_gate:abc", { sender: "U5" }))).json()).skipped === "not-old-button", "Zernio's own buttons are not touched");
+c.posts["17978249321939264"].enabled = false; await save(c);
+assert((await (await send(tap("https://github.com/mutonby/openshorts", { sender: "U8" }))).json()).skipped === "video-off", "a video turned off in the panel stops its old buttons too");
 
 globalThis.fetch = realFetch;
 console.log("all good");
