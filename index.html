@@ -626,9 +626,11 @@ $("#addRule").addEventListener("click", () => {
 });
 
 /* ---------------- DMs page ---------------- */
+// the word a caption asks for: «اكتب IDM في الكومنت» -> IDM (same rule as lib/autokw.js)
+const autoKw = (id) => { const m = MEDIA.find((x) => x.id === id); const r = (m?.caption || "").match(/اكتب\s+[«"'“]?([^\s«»"'“”]{2,30})[»"'”]?\s+(?:في|ف)\s*(?:ال)?(?:كومنت|كومنتات|تعليق|تعليقات)/i); return r ? r[1] : ""; };
 function renderDmVideos() {
   if (!CFG) return;
-  const list = Object.entries(CFG.posts).filter(([, p]) => p.enabled && p.dmKeywords && String(p.keywords || "").trim());
+  const list = Object.entries(CFG.posts).filter(([id, p]) => p.enabled && (p.dmKeywords || CFG.settings.dmAll !== false) && (String(p.keywords || "").trim() || autoKw(id))).map(([id, p]) => [id, { ...p, keywords: String(p.keywords || "").trim() || autoKw(id) }]);
   $("#dmVideos").innerHTML = list.length ? list.map(([id, p]) => {
     const cap = (MEDIA.find((m) => m.id === id) || {}).caption || p.caption || "فيديو " + id;
     return `<div class="toprow" data-open="${id}" style="cursor:pointer"><div class="cap">${esc(cap)}</div><span class="chip">${esc(p.keywords)}</span></div>`;
@@ -636,7 +638,8 @@ function renderDmVideos() {
   $$("#dmVideos [data-open]").forEach((el) => el.addEventListener("click", () => openPost(el.dataset.open)));
 }
 $("#backfillDms").addEventListener("click", () => runBackfill("/api/admin?action=backfill-dms", $("#backfillDms"), $("#dmResult"), (r) =>
-  `اترد على <b>${r.answered}</b> (${r.links} لينك، ${r.gated} اتطلب منهم فولو) · اتفحص ${r.checked} محادثة`));
+  `اترد على <b>${r.answered}</b> (${r.links} لينك، ${r.gated} اتطلب منهم فولو)` +
+  `<div class="tiny muted">اتفحص ${r.checked} محادثة · مترد عليها قبل كده ${r.answeredBefore ?? 0} · مفيهاش كلمة فيديو ${r.noKeyword}${r.failed ? ` · فشل ${r.failed}` : ""}</div>`));
 
 async function runBackfill(url, btn, out, line) {
   if (isDirty()) { out.innerHTML = '<span class="msg err">احفظ التعديلات الأول.</span>'; return; }
@@ -675,6 +678,14 @@ function renderSettings() {
   };
   sel("gateStyle", "أول رسالة بعد الكومنت", "«زي اللينك»: المتابع ياخد اللينك على طول، وغيره رسالة بزرار يتحقق. «اطلب الفولو»: رسالة اعمل فولو + زرار عملت فولو.", [["link", "زي اللينك"], ["follow", "اطلب الفولو الأول"]]);
   sel("repeat", "لو نفس الشخص كتب أكتر من كومنت", "", [["every", "يترد على كل كومنت"], ["once", "أول كومنت بس"]]);
+  const dm = document.createElement("label"); dm.className = "switch";
+  dm.innerHTML = '<input type="checkbox"> الرد على كلمة الفيديو لو اتبعتت في الخاص — لكل الفيديوهات';
+  const dmi = dm.querySelector("input"); dmi.checked = S.dmAll !== false;
+  dmi.addEventListener("change", () => { S.dmAll = dmi.checked; changed(); });
+  box.appendChild(dm);
+  const dmh = document.createElement("div"); dmh.className = "tiny muted";
+  dmh.textContent = "الكلمة = كلمات التشغيل بتاعة الفيديو، ولو مفيش: الكلمة اللي في الوصف «اكتب IDM في الكومنت».";
+  box.appendChild(dmh);
   for (const [k, label, help, max] of SETTINGS) {
     const d = document.createElement("div"); d.className = "field";
     d.innerHTML = `<div class="label">${label}<small>${max} حرف</small></div>` + (max > 20 ? `<textarea dir="auto" maxlength="${max}" rows="${k === "reply" ? 3 : 2}"></textarea>` : `<input type="text" dir="auto" maxlength="${max}">`) + (help ? `<div class="tiny muted">${help}</div>` : "");
@@ -799,7 +810,11 @@ function refreshEditor() {
   const ta = $('[data-k="message"]', b); $("[data-count]", b).textContent = (ta.value.length) + " / 1000";
   const ln = $('[data-k="link"]', b); ln.classList.toggle("bad", !!ln.value.trim() && !isLink(ln.value));
   const hasKw = !!String(obj.keywords || "").trim();
-  $("[data-dmhint]", b).textContent = obj.dmKeywords && !hasKw ? "⚠️ لازم تكتب كلمات تشغيل عشان «الكلمة في الخاص» تشتغل." : "لو حد بعت الكلمة في رسالة، ياخد نفس الرد.";
+  const auto = EDIT.kind === "post" ? autoKw(EDIT.id) : "", dmOn = obj.dmKeywords || S.dmAll !== false;
+  $("[data-dmhint]", b).textContent = !dmOn ? "لو حد بعت الكلمة في رسالة، ياخد نفس الرد."
+    : hasKw ? "شغالة: لو حد بعت «" + String(obj.keywords).split(",")[0].trim() + "» في رسالة ياخد نفس الرد."
+    : auto ? "شغالة بالكلمة اللي في الوصف: «" + auto + "»." : "⚠️ مفيش كلمة: اكتب كلمات تشغيل عشان الكلمة في الخاص تشتغل."
+    + (S.dmAll !== false ? " (مفعّلة لكل الفيديوهات من الإعدادات)" : "");
   const enabled = kind === "rule" ? obj.enabled !== false : !!obj.enabled;
   const err = $("[data-err]", b), miss = enabled ? missing(obj) : "";
   const se = obj.syncError ? "Zernio: " + obj.syncError : "";

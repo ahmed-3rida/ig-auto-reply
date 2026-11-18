@@ -15,6 +15,7 @@ import { loadConfig, saveConfig, findRuleV2 } from "../lib/config.js";
 import { hasZernio, automationLogs } from "../lib/zernio.js";
 import { automationBody, createOrAdopt, usesTapFirst, commentMatches } from "../lib/sync.js";
 import { answerComment, answerInDm, entryForPayload, baseOf } from "../lib/respond.js";
+import { autoKeywords } from "../lib/autokw.js";
 
 const env = (k, d = "") => process.env[k] ?? d;
 const busy = new Set(); // posts being set up right now (per server instance)
@@ -179,7 +180,7 @@ export async function dmKeyword(ev, base = "") {
   if (!hasZernio()) return ok({ skipped: "no-zernio" });
   const cfg = await loadConfig();
   if (!cfg.enabled) return ok({ skipped: "off" });
-  const hit = findDmVideo(cfg, text);
+  const hit = findDmVideo(cfg, text, await autoKeywords().catch(() => new Map()));
   if (!hit) return ok({ skipped: "no-keyword" });
   if (meta.standby) return ok({ skipped: "standby" });
   const sender = String(m.sender?.id ?? ""), conversationId = ev.conversation?.id ?? m.conversationId;
@@ -191,12 +192,19 @@ export async function dmKeyword(ev, base = "") {
 
 // The video a DM's text asks for: enabled, «الكلمة في الخاص» on, has trigger words and one of them matches.
 // The longest matching word wins (so "IDM" beats "I").
-export function findDmVideo(cfg, text) {
+// The video a DM's text asks for. A video counts when it is on and «الكلمة في الخاص» is on for it (or for all
+// videos in the settings). Its words are its trigger words, or else the word its caption asks for
+// («اكتب IDM في الكومنت»), matched as a whole word. The longest matching word wins.
+export function findDmVideo(cfg, text, auto = new Map()) {
   let best = null;
   for (const [id, p] of Object.entries(cfg.posts)) {
-    if (!p.enabled || !p.dmKeywords || !String(p.keywords ?? "").trim()) continue;
-    if (!commentMatches(p, text)) continue;
-    const len = Math.max(...String(p.keywords).split(/[,،\n]/).map((w) => w.trim().length));
+    if (!p.enabled || !(p.dmKeywords || cfg.settings.dmAll !== false)) continue;
+    const own = String(p.keywords ?? "").trim();
+    const words = own || auto.get(id) || "";
+    if (!words) continue;
+    const probe = own ? p : { keywords: words, matchMode: "word" };
+    if (!commentMatches(probe, text)) continue;
+    const len = Math.max(...words.split(/[,،\n]/).map((w) => w.trim().length));
     if (!best || len > best.len) best = { id, entry: p, len };
   }
   return best && { id: best.id, entry: best.entry };

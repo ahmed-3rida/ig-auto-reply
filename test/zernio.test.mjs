@@ -44,7 +44,7 @@ globalThis.fetch = async (url, init = {}) => {
   }
   if (path === "/v1/inbox/comments" && method === "GET") return Response.json({ data: [
     { id: "18098088275062213", content: "@thesevendogsfilm 🔥", permalink: "https://www.instagram.com/p/Da_MSaTjZqT/", picture: "pic", createdTime: "2026-07-19T20:10:28Z", commentCount: 7 },
-    { id: "17978249321939264", content: "GTA", permalink: "https://www.instagram.com/reel/DfvN_5btSE2/", createdTime: "2026-11-14T21:55:44Z", commentCount: 1589 },
+    { id: "17978249321939264", content: "GTA 6 نازلة\r\nاكتب GTA في الكومنت وهبعتلك الأداة 📩", permalink: "https://www.instagram.com/reel/DfvN_5btSE2/", createdTime: "2026-11-14T21:55:44Z", commentCount: 1589 },
   ], pagination: { hasMore: true, nextCursor: "CUR" } });
   const pc = path.match(/^\/v1\/inbox\/comments\/(\w+)$/);
   if (pc && method === "GET") return Response.json({ comments: Z.postComments[pc[1]] ?? [], pagination: { hasMore: false } });
@@ -295,8 +295,17 @@ res = await (await send(dmEv("N9", "five"))).json();
 assert(res.answered === "follow-first" && Z.sent.at(-1).buttons.at(-1).payload === "msg:905", "a non-follower who DMs the word gets «follow first»");
 assert((await (await send(dmEv("N8", "hello"))).json()).skipped === "no-keyword", "other DMs are ignored");
 assert((await (await send(dmEv("N7", "five", { metadata: { standby: true } }))).json()).skipped === "standby", "a DM in a chat another app holds is left alone");
-c.posts["905"].dmKeywords = false; await save(c);
-assert((await (await send(dmEv("F1", "five"))).json()).skipped === "no-keyword", "the DM switch is per video");
+c.posts["905"].dmKeywords = false; c.settings.dmAll = false; await save(c);
+assert((await (await send(dmEv("F1", "five"))).json()).skipped === "no-keyword", "with the global DM switch off, the per-video switch decides");
+c.settings.dmAll = true; await save(c);
+assert((await (await send(dmEv("F2", "five"))).json()).video === "905", "global DM switch (default on) answers every video's word");
+const { captionKeyword } = await import("../lib/autokw.js");
+assert(captionKeyword("بديل IDM\r\nاكتب IDM في الكومنت وهبعتلك") === "IDM" && captionKeyword("🎁 اكتب ALGO في الكومنت") === "ALGO" && captionKeyword("ريل عادي") === "", "the word is read from «اكتب X في الكومنت»");
+c.posts["17978249321939264"].enabled = true; c.posts["17978249321939264"].keywords = ""; await save(c);
+Z.followers.add("G1");
+res = await (await send(dmEv("G1", "Gta"))).json();
+assert(res.video === "17978249321939264" && res.answered === "link", "a video with no trigger words answers the word from its caption in DMs (any case)");
+assert((await (await send(dmEv("G2", "gtaaa"))).json()).skipped === "no-keyword", "a caption word matches as a whole word only");
 c.posts["905"].dmKeywords = true; await save(c);
 
 // --- «answer what was missed»: DMs
