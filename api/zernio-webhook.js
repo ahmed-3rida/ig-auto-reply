@@ -166,7 +166,8 @@ export async function firstDm(ev, cfg, id) {
   const dm = tapFirstDm(id, entry, cfg.settings);
   if (!dm) return ok({ skipped: "nothing-to-send" });
   const key = `${c.author?.id}|${id}`, now = Date.now();
-  if (now - (answered.get(key) ?? 0) < REPEAT_MS) return ok({ skipped: "already-answered" });
+  const repeatMs = cfg.settings.repeat === "once" ? REPEAT_MS : 0;
+  if (now - (answered.get(key) ?? 0) < repeatMs) return ok({ skipped: "already-answered" });
   answered.set(key, now);
   const postId = c.postId || id;
   try {

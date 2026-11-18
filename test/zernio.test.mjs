@@ -240,7 +240,13 @@ Z.logs.push({ automationId: a904(), commentId: "CA7", status: "skipped", error: 
 res = await (await send(cm("A7", "zed", true, "CA7"))).json();
 assert(res.skipped === "zernio-repeat", "someone Zernio already sent the link to is not messaged again");
 res = await (await send(cm("A1", "zed again", null))).json();
-assert(res.skipped === "already-answered", "the same person commenting again gets one DM");
+assert(res.answered === "tap-first", "default: the same person commenting again is answered again");
+c.settings.repeat = "once"; await save(c);
+assert(autoFor("904").repeatPolicy.mode === "once", "«first comment only» setting reaches Zernio");
+res = await (await send(cm("A1", "zed third", null))).json();
+assert(res.skipped === "already-answered", "with «first comment only» the same person gets one DM");
+c.settings.repeat = "every"; await save(c);
+assert(autoFor("904").repeatPolicy.mode === "every_comment", "default repeat policy is every comment");
 res = await (await send(cm("A4", "zedd", null))).json();
 assert(res.skipped === "no-keyword", "trigger words are respected (word match)");
 c.posts["904"].gate = false; await save(c);

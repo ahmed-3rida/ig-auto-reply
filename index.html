@@ -265,6 +265,13 @@ function renderSettings(){
   const sel = st.querySelector("select"); sel.value = CFG.settings.gateStyle || "link";
   sel.addEventListener("change", () => { CFG.settings.gateStyle = sel.value; markDirty(); });
   box.appendChild(st);
+  const rp = document.createElement("div"); rp.style.gridColumn = "1/-1";
+  rp.innerHTML = `<div class="lbl"><span>لو نفس الشخص كتب أكتر من كومنت على نفس الفيديو</span></div>
+    <select style="width:100%"><option value="every">يترد على كل كومنت (رسالة + رد على الكومنت)</option>
+    <option value="once">يترد على أول كومنت بس</option></select>`;
+  const rsel = rp.querySelector("select"); rsel.value = CFG.settings.repeat || "every";
+  rsel.addEventListener("change", () => { CFG.settings.repeat = rsel.value; markDirty(); });
+  box.appendChild(rp);
   for (const [k, label, max] of SETTINGS) {
     const d = document.createElement("div");
     d.innerHTML = `<div class="lbl"><span>${esc(label)}</span><span>${max} حرف</span></div>` +
