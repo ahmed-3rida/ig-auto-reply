@@ -92,7 +92,7 @@ assert(gta.commentReplyVariations.length === 2 && gta.commentReplyVariations[1] 
 Z.followers.add("U4");
 let tapRes = await (await (await import("../api/zernio-webhook.js")).oldButton({ message: { platform: "instagram", direction: "incoming", sender: { id: "U4" } },
   conversation: { id: "CONVU4" }, metadata: { postbackPayload: "msg:17978249321939264" }, account: { username: "a" } })).json();
-assert(tapRes.answered === "link" && Z.sent.at(-1).buttons[0].url === "https://github.com/mutonby/openshorts" && Z.sent.at(-1).buttons[0].type === "url",
+assert(tapRes.answered === "link" && Z.sent.at(-1).message === "اتفضل اللينك 👇" && Z.sent.at(-1).buttons[0].url === "https://github.com/mutonby/openshorts" && Z.sent.at(-1).buttons[0].type === "url",
   "a follower tapping that button gets the real link button");
 tapRes = await (await (await import("../api/zernio-webhook.js")).oldButton({ message: { platform: "instagram", direction: "incoming", sender: { id: "U3" } },
   conversation: { id: "CONVU3" }, metadata: { postbackPayload: "msg:17978249321939264" }, account: { username: "a" } })).json();
@@ -121,7 +121,7 @@ c.settings.gateStyle = "link"; c.posts["17978249321939264"].gate = true; await s
 const g3 = autoFor("17978249321939264");
 const { tapFirstDm } = await import("../lib/sync.js");
 const t3 = tapFirstDm("17978249321939264", c.posts["17978249321939264"], c.settings);
-assert(g3.audience.whenUnknown === "skip" && t3.dmMessage === "اتفضل اللينك 👇" && t3.buttons[0].title === "Open 🔗" && t3.buttons[0].type === "postback",
+assert(g3.audience.whenUnknown === "skip" && t3.dmMessage === "دوس على الزرار تحت وهبعتلك اللينك 👇" && t3.buttons[0].title === "Open 🔗" && t3.buttons[0].type === "postback",
   "link style: the webhook's first DM is the link text with the video's own button name (its message waits for the check)");
 c.posts["17978249321939264"].gate = false;
 c.settings.gateStyle = "follow"; await save(c);
@@ -226,7 +226,7 @@ const cm = (author, text, follower, cid = "K" + Math.random().toString().slice(2
 const before = Z.privateReplies.length;
 res = await (await send(cm("A1", "عايز Zed لو سمحت", null))).json();
 assert(res.answered === "tap-first" && Z.privateReplies.at(-1).buttons[0].type === "postback" && Z.privateReplies.at(-1).buttons[0].payload === "msg:904"
-  && Z.privateReplies.at(-1).buttons[0].title === "Zed" && Z.privateReplies.at(-1).message === "اتفضل اللينك 👇", "unknown commenter gets the link-looking DM with a tap button");
+  && Z.privateReplies.at(-1).buttons[0].title === "Zed" && Z.privateReplies.at(-1).message === "دوس على الزرار تحت وهبعتلك اللينك 👇", "unknown commenter gets the check DM (its own text) with a tap button");
 assert(Z.publicReplies.at(-1).commentId === Z.privateReplies.at(-1).commentId, "…and the public reply");
 res = await (await send(cm("A2", "zed", false))).json();
 assert(res.answered === "tap-first", "known non-follower also gets the link-looking DM (not «not following»)");
