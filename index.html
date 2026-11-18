@@ -235,7 +235,10 @@ async function login(pw) {
 
 $("#loginForm").addEventListener("submit", async (e) => {
   e.preventDefault(); $("#loginMsg").textContent = "";
-  try { await login($("#pw").value); } catch (err) { $("#loginMsg").textContent = err.status === 401 ? "كلمة السر غلط" : err.message; }
+  try { await login($("#pw").value); } catch (err) {
+    $("#loginMsg").textContent = err.status === 401 ? "كلمة السر غلط"
+      : err.status === 503 ? "كلمة السر مش متضافة في Vercel للنسخة دي (VERIFY_TOKEN)" : err.message;
+  }
 });
 
 function showZernio(z){

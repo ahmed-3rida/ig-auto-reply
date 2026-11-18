@@ -11,15 +11,21 @@ import { syncAll, adoptExternal, statsByPost } from "../lib/sync.js";
 const env = (k, d = "") => process.env[k] ?? d;
 const GRAPH = () => `https://graph.instagram.com/${env("GRAPH_VERSION", "v24.0")}`;
 
+const password = () => (env("ADMIN_PASSWORD") || env("VERIFY_TOKEN")).trim();
+
 function authorized(request) {
-  const want = env("ADMIN_PASSWORD") || env("VERIFY_TOKEN");
-  const got = request.headers.get("x-admin-key") ?? "";
+  const want = password();
+  const got = (request.headers.get("x-admin-key") ?? "").trim();
   if (!want) return false;
   const a = Buffer.from(want), b = Buffer.from(got);
   return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 
 const json = (data, status = 200) => Response.json(data, { status, headers: { "Cache-Control": "no-store" } });
+// No password set on this deployment (e.g. a Preview without the variable) is not the same as a wrong password.
+const denied = () => password()
+  ? json({ error: "unauthorized" }, 401)
+  : json({ error: "no-password", message: "VERIFY_TOKEN مش متضاف في Vercel للبيئة دي (Production/Preview)" }, 503);
 
 // Current config with automations made directly in Zernio folded in, plus per-video numbers.
 async function current() {
@@ -39,7 +45,7 @@ async function current() {
 const typeOf = (permalink = "") => (/\/reel\//.test(permalink) ? "REEL" : "IMAGE");
 
 export async function GET(request) {
-  if (!authorized(request)) return json({ error: "unauthorized" }, 401);
+  if (!authorized(request)) return denied();
   const u = new URL(request.url);
   const action = u.searchParams.get("action");
 
@@ -94,7 +100,7 @@ export async function GET(request) {
 const SERVER_FIELDS = ["automationId", "syncedHash", "syncError", "via"];
 
 export async function POST(request) {
-  if (!authorized(request)) return json({ error: "unauthorized" }, 401);
+  if (!authorized(request)) return denied();
   const action = new URL(request.url).searchParams.get("action");
   let body = {};
   if (action !== "resync") {
