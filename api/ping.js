@@ -1,13 +1,24 @@
-// Public liveness check (no secrets): can the site read its saved settings?
+// Public liveness check (no secrets): can the site read its saved settings, and what shape are they in?
 import { list } from "@vercel/blob";
+import { loadConfig } from "../lib/config.js";
 
 export async function GET() {
-  const out = { blobToken: !!process.env.BLOB_READ_WRITE_TOKEN, list: null, error: null, configFiles: null };
+  const out = { blobToken: !!process.env.BLOB_READ_WRITE_TOKEN, list: null, error: null, files: [], loaded: null };
   try {
-    const r = await list({ prefix: "config/", limit: 10 });
-    out.list = "ok"; out.configFiles = r.blobs.length;
+    const r = await list({ prefix: "config/", limit: 20 });
+    out.list = "ok";
+    out.files = r.blobs.sort((a, b) => new Date(b.uploadedAt) - new Date(a.uploadedAt)).map((b) => ({ at: b.uploadedAt, size: b.size }));
+    const newest = r.blobs[0] && await fetch(r.blobs[0].url, { cache: "no-store" });
+    out.fetchStatus = newest?.status ?? null;
   } catch (e) {
     out.list = "failed"; out.error = String(e?.message ?? e).slice(0, 300);
   }
+  try {
+    const cfg = await loadConfig({ fresh: true });
+    const posts = Object.values(cfg.posts);
+    out.loaded = { enabled: cfg.enabled, posts: posts.length, on: posts.filter((p) => p.enabled).length,
+      gateOn: posts.filter((p) => p.gate).length, withAutomation: posts.filter((p) => p.automationId).length,
+      hasFreeLLM: !!cfg.posts["18091667573283321"], gateStyle: cfg.settings.gateStyle, textsV2: cfg.settings.textsV2 };
+  } catch (e) { out.loaded = { error: String(e.message).slice(0, 200) }; }
   return Response.json(out, { headers: { "Cache-Control": "no-store" } });
 }
