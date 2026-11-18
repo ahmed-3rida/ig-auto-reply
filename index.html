@@ -142,6 +142,7 @@ select{padding:8px 10px;border:1px solid var(--line);border-radius:9px;backgroun
 <div id="bar" class="bar hide">
   <button class="primary" id="save" disabled>حفظ</button>
   <span id="saveMsg" class="msg muted">مفيش تعديلات</span>
+  <button id="resync" title="يبعت إعدادات كل الفيديوهات لـ Zernio من جديد">تحديث Zernio</button>
 </div>
 
 <script>
@@ -257,6 +258,13 @@ const SETTINGS = [
 ];
 function renderSettings(){
   const box = $("#settings"); box.innerHTML = ""; CFG.settings = CFG.settings || {};
+  const st = document.createElement("div"); st.style.gridColumn = "1/-1";
+  st.innerHTML = `<div class="lbl"><span>أول رسالة في الخاص (للي لسه منعرفش هو متابع ولا لأ)</span></div>
+    <select style="width:100%"><option value="link">زي اللينك: «الرسالة اللي فوق زرار اللينك» + زرار باسم زرار اللينك — الدوسة بتتحقق من الفولو</option>
+    <option value="follow">اطلب الفولو الأول: «رسالة اعمل فولو الأول» + زرار «عملت فولو» + زرار فتح الحساب</option></select>`;
+  const sel = st.querySelector("select"); sel.value = CFG.settings.gateStyle || "link";
+  sel.addEventListener("change", () => { CFG.settings.gateStyle = sel.value; markDirty(); });
+  box.appendChild(st);
   for (const [k, label, max] of SETTINGS) {
     const d = document.createElement("div");
     d.innerHTML = `<div class="lbl"><span>${esc(label)}</span><span>${max} حرف</span></div>` +
@@ -424,6 +432,20 @@ $("#save").addEventListener("click", async () => {
     else { $("#saveMsg").className = "msg ok"; $("#saveMsg").textContent = "اتحفظ ✓ — Zernio بقى بيرد بالإعدادات الجديدة" + (r ? ` (${r.created} جديد، ${r.updated} اتعدّل، ${r.paused} اتوقف)` : ""); }
     renderSettings(); renderRules(); render();
   } catch (err) { $("#save").disabled = false; $("#saveMsg").className = "msg err"; $("#saveMsg").textContent = "الحفظ فشل: " + err.message; }
+});
+
+$("#resync").addEventListener("click", async () => {
+  if (dirty) { $("#saveMsg").className = "msg err"; $("#saveMsg").textContent = "احفظ التعديلات الأول"; return; }
+  $("#resync").disabled = true; $("#saveMsg").className = "msg"; $("#saveMsg").textContent = "بيحدّث Zernio...";
+  try {
+    const d = await api("/api/admin?action=resync", { method: "POST" });
+    CFG = d.config; CFG.rules = CFG.rules || []; STATS = d.stats || STATS; showZernio(d.zernio);
+    const r = d.report || {};
+    $("#saveMsg").className = "msg " + (r.failed ? "err" : "ok");
+    $("#saveMsg").textContent = r.failed ? `${r.failed} فيديو Zernio رفضه — شوف الغلط تحت الفيديو` : `Zernio اتحدّث ✓ (${(r.created||0)+(r.updated||0)} فيديو)`;
+    renderSettings(); renderRules(); render();
+  } catch (err) { $("#saveMsg").className = "msg err"; $("#saveMsg").textContent = "التحديث فشل: " + err.message; }
+  $("#resync").disabled = false;
 });
 
 const saved = store.get();
