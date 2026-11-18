@@ -1,5 +1,5 @@
 // Local test for the panel API and the link lookup that viaSocket uses.
-// Needs @vercel/blob (npm install) — or a stub of it — to run.
+// Run with `npm test` (uses the in-memory @vercel/blob stub in test/).
 process.env.VERIFY_TOKEN = "abc";
 process.env.BLOB_READ_WRITE_TOKEN = "test";
 process.env.IG_ACCESS_TOKEN = "tok";

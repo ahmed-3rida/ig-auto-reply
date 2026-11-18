@@ -64,6 +64,12 @@ textarea.bad{border-color:var(--err)}
 .seg button.on{background:var(--accent);color:var(--accent-ink);font-weight:600}
 .lbl{font-size:12px;color:var(--muted);display:flex;justify-content:space-between;gap:8px}
 .btnrow{display:flex;gap:8px;align-items:center}.btnrow input{flex:1}
+.nums{display:flex;gap:12px;flex-wrap:wrap;font-size:12px;color:var(--muted)}.nums b{color:var(--text)}
+.err-line{font-size:12px;color:var(--err)}
+details.more summary{cursor:pointer;font-size:13px;color:var(--accent);margin:2px 0}
+details.more>div{display:flex;flex-direction:column;gap:8px;margin-top:8px}
+.sgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px;margin-top:10px}
+select{padding:8px 10px;border:1px solid var(--line);border-radius:9px;background:var(--field);color:var(--text);font:inherit}
 </style>
 </head>
 <body>
@@ -82,19 +88,29 @@ textarea.bad{border-color:var(--err)}
   <div class="top">
     <div>
       <h1>لينكات الفيديوهات</h1>
-      <div class="muted">فعّل الفيديو واختار الرد: <b>لينك</b>، أو <b>رسالة</b> (خطوات/شرح)، أو <b>رسالة + لينك</b>. viaSocket بيرد على أي كومنت عليه، وبعد ما الشخص يدوس الزرار ويتأكد إنه متابع بيبعتله الرد.</div>
+      <div class="muted">فعّل الفيديو واختار الرد: <b>لينك</b>، أو <b>رسالة</b> (خطوات/شرح)، أو <b>رسالة + لينك</b>. Zernio بيرد على الكومنت، ولو «التحقق من الفولو» شغال بيتأكد إن الشخص متابع قبل ما يبعتله الرد.</div>
     </div>
     <label class="switch"><input type="checkbox" id="enabled"> <span id="enabledLbl"></span></label>
   </div>
 
   <div id="offBanner" class="card banner hide">الرد التلقائي متوقف دلوقتي — مفيش أي لينك هيتبعت لحد ما تشغّله تاني.</div>
   <div id="storageWarn" class="card banner hide">التخزين مش متوصل — الإعدادات مش هتتحفظ.</div>
+  <div id="zernioWarn" class="card banner hide"></div>
 
   <div class="stats">
     <div class="stat"><b id="stActive">0</b><span class="muted">فيديو شغال</span></div>
     <div class="stat"><b id="stMissing">0</b><span class="muted">مفعّل وناقصه حاجة</span></div>
     <div class="stat"><b id="stRules">0</b><span class="muted">فيديو جاي (بالوصف)</span></div>
     <div class="stat"><b id="stLoaded">0</b><span class="muted">بوست ظاهر</span></div>
+    <div class="stat"><b id="stSent">0</b><span class="muted">رسالة اتبعتت</span></div>
+    <div class="stat"><b id="stClicks">0</b><span class="muted">ضغطة على لينك</span></div>
+  </div>
+
+  <div class="card" style="margin-bottom:16px">
+    <details class="more" id="settingsBox">
+      <summary><b>إعدادات عامة</b> — نصوص التحقق من الفولو والرد الافتراضي (لكل الفيديوهات)</summary>
+      <div class="sgrid" id="settings"></div>
+    </details>
   </div>
 
   <div class="card" style="margin-bottom:16px">
@@ -130,7 +146,7 @@ textarea.bad{border-color:var(--err)}
 
 <script>
 const $ = (s) => document.querySelector(s);
-let KEY = "", CFG = null, MEDIA = [], AFTER = null, FILTER = "all", QUERY = "", dirty = false;
+let KEY = "", CFG = null, STATS = {}, MEDIA = [], AFTER = null, FILTER = "all", QUERY = "", dirty = false;
 const store = { get(){ try { return sessionStorage.getItem("adm") || ""; } catch { return ""; } },
                 set(v){ try { sessionStorage.setItem("adm", v); } catch {} } };
 const norm = (s) => String(s || "").toLowerCase().replace(/[\u064B-\u0652\u0640]/g, "").replace(/[أإآ]/g, "ا").replace(/ى/g, "ي").replace(/ة/g, "ه").replace(/\s+/g, " ").trim();
@@ -158,15 +174,30 @@ function replyFields(o, onChange){
     <div data-show="message"><div class="lbl"><span>الرسالة</span><span data-count></span></div>
       <textarea dir="auto" maxlength="1000" placeholder="مثلاً: الخطوات:&#10;1- ...&#10;2- ..."></textarea></div>
     <div data-show="link"><input type="url" dir="ltr" placeholder="https://..." aria-label="اللينك"></div>
-    <div><div class="lbl"><span>اسم الزرار اللي في أول رسالة</span><span>20 حرف بالكتير</span></div>
-      <div class="btnrow"><input type="text" dir="auto" maxlength="20" placeholder="Link" aria-label="اسم الزرار"></div></div>`;
+    <div data-show="link"><div class="lbl"><span>اسم زرار اللينك</span><span>20 حرف بالكتير</span></div>
+      <div class="btnrow"><input type="text" dir="auto" maxlength="20" placeholder="Link" aria-label="اسم الزرار"></div></div>
+    <label class="switch" style="font-weight:500"><input type="checkbox" data-k="gate"> التحقق من الفولو قبل الإرسال</label>
+    <details class="more"><summary>كلمات التشغيل والرد على الكومنت</summary><div>
+      <div><div class="lbl"><span>يشتغل لما الكومنت فيه (افصل بفاصلة — فاضي = أي كومنت)</span></div>
+        <div class="btnrow"><input type="text" dir="auto" data-k="keywords" placeholder="مثلاً: IDM, لينك">
+        <select data-k="matchMode" aria-label="طريقة المطابقة"><option value="contains">جزء من الكومنت</option><option value="word">كلمة لوحدها</option><option value="exact">الكومنت كله بالظبط</option></select></div></div>
+      <div><div class="lbl"><span>الرد على الكومنت (كل سطر رد مختلف بيتختار عشوائي — فاضي = الرد الافتراضي)</span></div>
+        <textarea dir="auto" data-k="reply" maxlength="1000" style="min-height:60px" placeholder="تم الرد ✅"></textarea></div>
+    </div></details>`;
   const ta = box.querySelector("textarea"), ln = box.querySelector("input[type=url]"), bt = box.querySelector(".btnrow input"), cnt = box.querySelector("[data-count]");
   ta.value = o.message || ""; ln.value = o.link || ""; bt.value = o.button || "";
+  const gate = box.querySelector("[data-k=gate]"), kw = box.querySelector("[data-k=keywords]"), mm = box.querySelector("[data-k=matchMode]"), rp = box.querySelector("[data-k=reply]");
+  gate.checked = o.gate !== false; kw.value = o.keywords || ""; mm.value = o.matchMode || "contains"; rp.value = o.reply || "";
+  if (o.keywords || o.reply) box.querySelector("details").open = true;
+  gate.addEventListener("change", () => { o.gate = gate.checked; onChange(); });
+  kw.addEventListener("input", () => { o.keywords = kw.value; onChange(); });
+  mm.addEventListener("change", () => { o.matchMode = mm.value; onChange(); });
+  rp.addEventListener("input", () => { o.reply = rp.value; onChange(); });
   const sync = () => {
     const m = modeOf(o);
     box.querySelectorAll(".seg button").forEach(b => b.classList.toggle("on", b.dataset.m === m));
     box.querySelector('[data-show=message]').classList.toggle("hide", m === "link");
-    box.querySelector('[data-show=link]').classList.toggle("hide", m === "message");
+    box.querySelectorAll('[data-show=link]').forEach(x => x.classList.toggle("hide", m === "message"));
     cnt.textContent = ta.value.length + " / 1000";
     ln.classList.toggle("bad", o.enabled !== false && m !== "message" && ln.value.trim() !== "" && !isLink(ln.value));
   };
@@ -191,8 +222,10 @@ async function login(pw) {
   KEY = pw;
   const d = await api("/api/admin?action=config");
   store.set(pw);
-  CFG = d.config;
+  CFG = d.config; STATS = d.stats || {};
   $("#storageWarn").classList.toggle("hide", d.storage);
+  showZernio(d.zernio);
+  renderSettings();
   $("#login").classList.add("hide"); $("#app").classList.remove("hide"); $("#bar").classList.remove("hide");
   CFG.rules = CFG.rules || [];
   $("#enabled").checked = CFG.enabled !== false; syncEnabled();
@@ -204,6 +237,32 @@ $("#loginForm").addEventListener("submit", async (e) => {
   e.preventDefault(); $("#loginMsg").textContent = "";
   try { await login($("#pw").value); } catch (err) { $("#loginMsg").textContent = err.status === 401 ? "كلمة السر غلط" : err.message; }
 });
+
+function showZernio(z){
+  const w = $("#zernioWarn"); z = z || {};
+  const txt = !z.connected ? "Zernio مش متوصل — حط ZERNIO_API_KEY في Vercel وإلا الردود مش هتشتغل."
+            : z.error ? "مقدرتش أوصل لـ Zernio: " + z.error : "";
+  w.textContent = txt; w.classList.toggle("hide", !txt);
+}
+const SETTINGS = [
+  ["reply", "الرد الافتراضي على الكومنت", 640],
+  ["linkDm", "الرسالة اللي فوق زرار اللينك (نوع «لينك»)", 640],
+  ["gateMessage", "رسالة «اعمل فولو الأول»", 640],
+  ["gateButton", "زرار «عملت فولو»", 20],
+  ["profileButton", "زرار فتح الحساب", 20],
+  ["notFollowing", "لما يدوس وهو مش متابع", 640],
+];
+function renderSettings(){
+  const box = $("#settings"); box.innerHTML = ""; CFG.settings = CFG.settings || {};
+  for (const [k, label, max] of SETTINGS) {
+    const d = document.createElement("div");
+    d.innerHTML = `<div class="lbl"><span>${esc(label)}</span><span>${max} حرف</span></div>` +
+      (max > 20 ? `<textarea dir="auto" maxlength="${max}" style="min-height:64px"></textarea>` : `<input type="text" dir="auto" maxlength="${max}">`);
+    const f = d.querySelector("textarea,input"); f.value = CFG.settings[k] || "";
+    f.addEventListener("input", () => { CFG.settings[k] = f.value; markDirty(); });
+    box.appendChild(d);
+  }
+}
 
 function syncEnabled(){
   const on = $("#enabled").checked;
@@ -240,6 +299,9 @@ function updateStats(){
   $("#stMissing").textContent = posts.filter(p => p.enabled && !complete(p)).length;
   $("#stLoaded").textContent = MEDIA.length;
   $("#stRules").textContent = (CFG.rules || []).filter(r => r.enabled && norm(r.match) && complete(r)).length;
+  const all = Object.values(STATS);
+  $("#stSent").textContent = all.reduce((n, s) => n + (s.dmsSent || 0), 0);
+  $("#stClicks").textContent = all.reduce((n, s) => n + (s.linkClicks || 0), 0);
 }
 
 function render() {
@@ -269,6 +331,7 @@ function card(m){
         <div><span class="tag">${esc(typeLbl)}</span><span class="muted">${esc(date)}</span></div>
         <div class="cap">${esc(m.caption) || '<span class="muted">بدون وصف</span>'}</div>
         <a class="muted" href="${esc(m.permalink)}" target="_blank" rel="noopener">فتح على انستا ↗</a>
+        <div class="nums" data-nums></div>
       </div>
     </div>
     <div class="body">
@@ -276,10 +339,16 @@ function card(m){
         <label class="switch"><input type="checkbox" data-k="enabled"> رد تلقائي</label>
         <span class="pill"></span>
       </div>
+      <div class="err-line hide" data-err></div>
     </div>`;
+  const st = STATS[m.id];
+  if (st) el.querySelector("[data-nums]").innerHTML =
+    `<span>كومنتات اشتغل عليها <b>${st.triggered || 0}</b></span><span>رسايل <b>${st.dmsSent || 0}</b></span>` +
+    `<span>ضغطات <b>${st.linkClicks || 0}</b></span><span>عدّوا الفولو <b>${st.followGatePassed || 0}</b></span>`;
+  if (p.syncError) { const e = el.querySelector("[data-err]"); e.textContent = "Zernio: " + p.syncError; e.classList.remove("hide"); }
   const chk = el.querySelector('[data-k=enabled]'), pill = el.querySelector(".pill");
   // edits go to a draft object that becomes the saved entry on the first change
-  const draft = CFG.posts[m.id] || { enabled: false, link: "", mode: "link", message: "", button: "" };
+  const draft = CFG.posts[m.id] || { enabled: false, link: "", mode: "link", message: "", button: "", gate: true, keywords: "", matchMode: "contains", reply: "" };
   chk.checked = !!draft.enabled;
   const refresh = () => {
     const pc = CFG.posts[m.id];
@@ -331,7 +400,7 @@ function renderRules(){
   });
 }
 $("#addRule").addEventListener("click", () => {
-  CFG.rules.unshift({ id: String(Date.now()), match: "", link: "", enabled: true, mode: "link", message: "", button: "" });
+  CFG.rules.unshift({ id: String(Date.now()), match: "", link: "", enabled: true, mode: "link", message: "", button: "", gate: true, keywords: "", matchMode: "contains", reply: "" });
   renderRules(); markDirty(); $("#rules input[type=text]").focus();
 });
 
@@ -345,10 +414,12 @@ $("#save").addEventListener("click", async () => {
   if (bad.length) { $("#saveMsg").className = "msg err"; $("#saveMsg").textContent = `فيه ${bad.length} فيديو مفعّل ناقصه حاجة: ${missing(bad[0])} (اللينك لازم يبدأ بـ https://)`; return; }
   $("#save").disabled = true; $("#saveMsg").className = "msg"; $("#saveMsg").textContent = "بيحفظ...";
   try {
-    const d = await api("/api/admin", { method: "POST", body: JSON.stringify({ enabled: CFG.enabled, posts: CFG.posts, rules: CFG.rules }) });
-    CFG = d.config; CFG.rules = CFG.rules || []; dirty = false;
-    $("#saveMsg").className = "msg ok"; $("#saveMsg").textContent = "اتحفظ ✓ — هيشتغل خلال أقل من دقيقة";
-    renderRules(); render();
+    const d = await api("/api/admin", { method: "POST", body: JSON.stringify({ enabled: CFG.enabled, settings: CFG.settings, posts: CFG.posts, rules: CFG.rules }) });
+    CFG = d.config; CFG.rules = CFG.rules || []; STATS = d.stats || STATS; dirty = false; showZernio(d.zernio);
+    const r = d.report;
+    if (r && r.failed) { $("#saveMsg").className = "msg err"; $("#saveMsg").textContent = `اتحفظ، بس ${r.failed} فيديو Zernio رفضه — شوف الغلط تحت الفيديو`; $("#save").disabled = false; }
+    else { $("#saveMsg").className = "msg ok"; $("#saveMsg").textContent = "اتحفظ ✓ — Zernio بقى بيرد بالإعدادات الجديدة" + (r ? ` (${r.created} جديد، ${r.updated} اتعدّل، ${r.paused} اتوقف)` : ""); }
+    renderSettings(); renderRules(); render();
   } catch (err) { $("#save").disabled = false; $("#saveMsg").className = "msg err"; $("#saveMsg").textContent = "الحفظ فشل: " + err.message; }
 });
 
