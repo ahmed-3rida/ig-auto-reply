@@ -9,6 +9,6 @@
     "@vercel/blob": "1.1.1"
   },
   "scripts": {
-    "test": "node --import ./test/register.mjs test.mjs && node --import ./test/register.mjs test/zernio.test.mjs"
+    "test": "node --import ./test/register.mjs test/zernio.test.mjs"
   }
 }

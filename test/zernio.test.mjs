@@ -8,7 +8,7 @@ process.env.ZERNIO_WEBHOOK_SECRET = "whsec";
 delete process.env.IG_ACCESS_TOKEN;
 
 const ACC = "6afd7f3a4a29a11a85dec5e5", PROF = "6afd7f1800e3468668318f56";
-const Z = { logs: [], autos: new Map(), calls: [], privateReplies: [], publicReplies: [], sent: [], followers: new Set(), seq: 0 };
+const Z = { postComments: {}, convs: [], convMsgs: {}, logs: [], autos: new Map(), calls: [], privateReplies: [], publicReplies: [], sent: [], followers: new Set(), seq: 0 };
 const hex = () => (++Z.seq).toString(16).padStart(24, "a");
 // one automation made directly in Zernio (like the one set up by hand before the panel)
 Z.autos.set("6afd84f0555dda08a89e3f12", { _id: "6afd84f0555dda08a89e3f12", platformPostId: "18098088275062213", trigger: "comment", keywords: [],
@@ -46,6 +46,11 @@ globalThis.fetch = async (url, init = {}) => {
     { id: "18098088275062213", content: "@thesevendogsfilm 🔥", permalink: "https://www.instagram.com/p/Da_MSaTjZqT/", picture: "pic", createdTime: "2026-07-19T20:10:28Z", commentCount: 7 },
     { id: "17978249321939264", content: "GTA", permalink: "https://www.instagram.com/reel/DfvN_5btSE2/", createdTime: "2026-11-14T21:55:44Z", commentCount: 1589 },
   ], pagination: { hasMore: true, nextCursor: "CUR" } });
+  const pc = path.match(/^\/v1\/inbox\/comments\/(\w+)$/);
+  if (pc && method === "GET") return Response.json({ comments: Z.postComments[pc[1]] ?? [], pagination: { hasMore: false } });
+  if (path === "/v1/inbox/conversations" && method === "GET") return Response.json({ data: Z.convs, pagination: { hasMore: false } });
+  const cmm = path.match(/^\/v1\/inbox\/conversations\/(\w+)\/messages$/);
+  if (cmm && method === "GET") return Response.json({ messages: Z.convMsgs[cmm[1]] ?? [] });
   const fs = path.match(/^\/v1\/accounts\/\w+\/follow-status\/(\w+)$/);
   if (fs) return Response.json({ userId: fs[1], isFollower: Z.followers.has(fs[1]), refreshed: u.searchParams.get("refresh") === "true" });
   const sm = path.match(/^\/v1\/inbox\/conversations\/(\w+)\/messages$/);
@@ -177,13 +182,13 @@ const ev = (postId, text, follower, extra = {}) => ({ event: "comment.received",
 assert((await send(ev("777", "x", true), "bad")).status === 401, "webhook rejects a bad signature");
 let res = await (await send(ev("777", "لينك", true))).json();
 assert(res.created && autoFor("777")?.buttons[0].url === "https://t.com/25" && autoFor("777").audience.followerStatus === "follower", "first comment on a matching new video creates its automation");
-assert(Z.privateReplies.at(-1).buttons[0].url === "https://t.com/25" && Z.publicReplies.at(-1).message === "تم ✅", "that first comment (follower) gets the link and the public reply");
+assert(Z.privateReplies.at(-1).buttons[0].url.startsWith("https://x/api/go?m=777&") && Z.publicReplies.at(-1).message === "تم ✅", "that first comment (follower) gets the link and the public reply");
 d = await getCfg();
 assert(d.config.posts["777"]?.via === "rule:#tool25", "the new video is saved in the panel");
 res = await (await send(ev("777", "تاني", true))).json();
 assert(res.skipped === "known", "later comments are left to the automation");
 res = await (await send(ev("778", "hi", false))).json();
-assert(res.answered && /اكتب كومنت تاني/.test(Z.privateReplies.at(-1).message), "non-follower's first comment is asked to follow and comment again");
+assert(res.answered && Z.privateReplies.at(-1).buttons.at(-1).payload === "msg:778", "non-follower's first comment on a new video gets a button that checks the follow");
 const p2 = { ...ev("779", "hi", true) }; p2.post.content = "ريل عادي";
 res = await (await send(p2)).json();
 assert(res.skipped === "no-rule" && !autoFor("779"), "videos without a matching rule are ignored");
@@ -195,7 +200,7 @@ const tap = (payload, { sender = "U9", standby = false, title = "Link" } = {}) =
 const IDM = "https://misterdownloadmanager.com/";
 Z.sent = [];
 res = await (await send(tap(IDM))).json();
-assert(res.answered === "follow-first" && Z.sent[0].buttons.at(-1).payload === IDM && Z.sent[0].buttons.at(-1).type === "postback",
+assert(res.answered === "follow-first" && Z.sent[0].buttons.at(-1).payload === "msg:18103119482424684" && Z.sent[0].buttons.at(-1).type === "postback",
   "old Link tap from a non-follower -> «follow first» with a button that checks again");
 res = await (await send(tap(IDM))).json();
 assert(res.skipped === "double-tap" && Z.sent.length === 1, "a double tap gets one answer");
@@ -203,11 +208,11 @@ res = await (await send(tap(IDM, { title: "عملت فولو ✅" }))).json();
 assert(res.answered === "follow-first" && Z.sent.length === 2, "tapping «عملت فولو» right after «follow first» (still not following) gets «not following» again");
 Z.followers.add("U8");
 res = await (await send(tap(IDM, { sender: "U8" }))).json();
-assert(res.answered === "link" && Z.sent.at(-1).buttons[0].url === IDM && Z.sent.at(-1).conv === "CONVU8", "follower tapping an old Link button gets the link");
+assert(res.answered === "link" && Z.sent.at(-1).buttons[0].url.startsWith("https://x/api/go?m=18103119482424684&") && Z.sent.at(-1).conv === "CONVU8", "follower tapping an old Link button gets the link");
 c.posts["903"] = { enabled: true, mode: "both", message: "اقرا ده", link: "https://m.com", gate: false };
 await save(c);
 res = await (await send(tap("msg:903", { sender: "U7" }))).json();
-assert(res.answered === "link" && Z.sent.at(-1).dmMessage === undefined && Z.sent.at(-1).message === "اقرا ده" && Z.sent.at(-1).buttons[0].url === "https://m.com",
+assert(res.answered === "link" && Z.sent.at(-1).dmMessage === undefined && Z.sent.at(-1).message === "اقرا ده" && Z.sent.at(-1).buttons[0].url.startsWith("https://x/api/go?m=903&"),
   "old v2 button (msg:<id>) sends that video's current message + link; its follow check setting is respected");
 assert((await (await send(tap(IDM, { sender: "U6", standby: true }))).json()).skipped === "standby", "standby taps are left alone");
 assert((await (await send(tap("zernio_follow_gate:abc", { sender: "U5" }))).json()).skipped === "not-old-button", "Zernio's own buttons are not touched");
@@ -252,6 +257,76 @@ assert(res.skipped === "no-keyword", "trigger words are respected (word match)")
 c.posts["904"].gate = false; await save(c);
 res = await (await send(cm("A5", "zed", null))).json();
 assert(res.skipped === "known", "follow check off: Zernio sends the link to everyone, webhook stays out");
+
+// --- «answer what was missed»: comments on one video
+const ago = (h) => new Date(Date.now() - h * 3600e3).toISOString();
+c.posts["905"] = { enabled: true, mode: "link", link: "https://five.com", button: "Five", gate: true, keywords: "five" };
+await save(c);
+Z.followers.add("F1");
+Z.postComments["905"] = [
+  { id: "B1", message: "five please", createdTime: ago(2), from: { id: "F1", username: "fan" }, replies: [] },                       // follower -> link
+  { id: "B2", message: "five", createdTime: ago(3), from: { id: "N1", username: "new" }, replies: [] },                              // unknown -> first DM
+  { id: "B3", message: "five", createdTime: ago(4), from: { id: "N2" }, replies: [{ from: { id: "x", isOwner: true }, message: "تم" }] }, // already answered
+  { id: "B4", message: "five", createdTime: ago(24 * 8), from: { id: "N3" }, replies: [] },                                         // > 7 days
+  { id: "B5", message: "hello", createdTime: ago(1), from: { id: "N4" }, replies: [] },                                             // no keyword
+  { id: "B6", message: "five", createdTime: ago(1), from: { id: "N5" }, replies: [] },                                              // Zernio already sent
+  { id: "B7", message: "me", createdTime: ago(1), from: { id: "own", isOwner: true }, replies: [] },
+];
+Z.logs.push({ automationId: autoFor("905")._id, commentId: "B6", status: "sent" });
+const bf = async (qs) => (await admin.POST(req("/api/admin?" + qs, { method: "POST" }))).json();
+const prBefore = Z.privateReplies.length;
+let b = await bf("action=backfill&id=905");
+assert(b.answered === 2 && b.links === 1 && b.firsts === 1 && b.alreadyDone === 2 && b.tooOld === 1 && b.noKeyword === 1 && b.remaining === 0,
+  "backfill answers only the missed comments (skips answered, too old, no keyword, Zernio-sent)");
+const newPR = Z.privateReplies.slice(prBefore);
+assert(newPR.find((x) => x.commentId === "B1").buttons[0].url.includes("/api/go?m=905&") && newPR.find((x) => x.commentId === "B2").buttons[0].payload === "msg:905",
+  "follower gets the (tracked) link, unknown gets the check button");
+assert((await bf("action=backfill&id=999")).error, "backfill refuses a video that isn't in the panel");
+
+// --- keyword in DMs
+c.posts["905"].dmKeywords = true; await save(c);
+const dmEv = (sender, text, extra = {}) => ({ event: "message.received", account: { username: "me" }, conversation: { id: "CV" + sender },
+  message: { platform: "instagram", direction: "incoming", text, sender: { id: sender } }, metadata: {}, ...extra });
+Z.sent = [];
+res = await (await send(dmEv("F1", "ممكن five"))).json();
+assert(res.answered === "link" && res.video === "905" && Z.sent.at(-1).buttons[0].url.includes("/api/go?m=905&"), "a follower who DMs the word gets the link");
+res = await (await send(dmEv("N9", "five"))).json();
+assert(res.answered === "follow-first" && Z.sent.at(-1).buttons.at(-1).payload === "msg:905", "a non-follower who DMs the word gets «follow first»");
+assert((await (await send(dmEv("N8", "hello"))).json()).skipped === "no-keyword", "other DMs are ignored");
+assert((await (await send(dmEv("N7", "five", { metadata: { standby: true } }))).json()).skipped === "standby", "a DM in a chat another app holds is left alone");
+c.posts["905"].dmKeywords = false; await save(c);
+assert((await (await send(dmEv("F1", "five"))).json()).skipped === "no-keyword", "the DM switch is per video");
+c.posts["905"].dmKeywords = true; await save(c);
+
+// --- «answer what was missed»: DMs
+Z.convs = [
+  { id: "V1", participantId: "F1", participantUsername: "fan", accountUsername: "me", updatedTime: ago(1) },
+  { id: "V2", participantId: "N1", participantUsername: "x", accountUsername: "me", updatedTime: ago(2) },
+  { id: "V3", participantId: "N2", accountUsername: "me", updatedTime: ago(3) },
+  { id: "V4", participantId: "N3", accountUsername: "me", updatedTime: ago(30) },
+];
+Z.convMsgs = {
+  V1: [{ direction: "incoming", message: "five?", senderId: "F1", createdAt: ago(1) }],
+  V2: [{ direction: "outgoing", message: "done", createdAt: ago(1.5) }, { direction: "incoming", message: "five", createdAt: ago(2) }],
+  V3: [{ direction: "incoming", message: "thanks", senderId: "N2", createdAt: ago(3) }],
+  V4: [{ direction: "incoming", message: "five", senderId: "N3", createdAt: ago(30) }],
+};
+Z.sent = [];
+b = await bf("action=backfill-dms");
+assert(b.answered === 1 && b.links === 1 && Z.sent.length === 1 && Z.sent[0].conv === "V1", "DM backfill answers unanswered keyword DMs inside 24h only");
+
+// --- tracked link
+const go = await import("../api/go.js");
+const link = Z.sent[0].buttons[0].url;
+const r1 = await go.GET(new Request(link));
+assert(r1.status === 302 && r1.headers.get("location") === "https://five.com", "tracked link redirects to the video's link");
+assert((await go.GET(new Request(link.replace(/s=\w+/, "s=0000000000000000")))).status === 404, "a forged tracked link is refused");
+
+// --- stats
+const st = await (await admin.GET(req("/api/admin?action=stats&days=7"))).json();
+const v905 = st.top.find((x) => x.id === "905");
+assert(st.daily.length === 7 && v905 && v905.clicks >= 1 && v905.links >= 2 && st.totals.answered > 0, "stats: per video and per day");
+assert(typeof st.totals.followRate === "number", "stats: follow rate after the check");
 
 globalThis.fetch = realFetch;
 console.log("all good");

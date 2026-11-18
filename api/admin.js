@@ -7,6 +7,11 @@ import crypto from "node:crypto";
 import { loadConfig, saveConfig, cleanConfig } from "../lib/config.js";
 import { hasZernio, listAutomations, listPosts, deleteAutomation, ZernioError } from "../lib/zernio.js";
 import { syncAll, adoptExternal, statsByPost } from "../lib/sync.js";
+import { comments as backfillComments, dms as backfillDms } from "../lib/backfill.js";
+import { stats } from "../lib/stats.js";
+import { baseOf } from "../lib/respond.js";
+
+export const maxDuration = 60; // the «answer what was missed» buttons work in batches of up to ~45s
 
 const env = (k, d = "") => process.env[k] ?? d;
 const GRAPH = () => `https://graph.instagram.com/${env("GRAPH_VERSION", "v24.0")}`;
@@ -94,6 +99,12 @@ export async function GET(request) {
     return json({ items, after: data.paging?.next ? data.paging?.cursors?.after : null });
   }
 
+  if (action === "stats") {
+    if (!hasZernio()) return json({ error: "Zernio مش متوصل" }, 400);
+    const days = Math.min(60, Math.max(7, Number(u.searchParams.get("days")) || 14));
+    try { return json(await stats(await loadConfig(), { days })); } catch (e) { return json({ error: e.message }, 502); }
+  }
+
   return json({ error: "unknown action" }, 400);
 }
 
@@ -101,7 +112,20 @@ const SERVER_FIELDS = ["automationId", "syncedHash", "syncError", "via"];
 
 export async function POST(request) {
   if (!authorized(request)) return denied();
-  const action = new URL(request.url).searchParams.get("action");
+  const u = new URL(request.url), action = u.searchParams.get("action");
+  if (action === "backfill" || action === "backfill-dms") {
+    if (!hasZernio()) return json({ error: "Zernio مش متوصل" }, 400);
+    const cfg = await loadConfig({ fresh: true });
+    const opts = { cfg, base: baseOf(request), deadline: Date.now() + 45_000 };
+    try {
+      if (action === "backfill") {
+        const id = u.searchParams.get("id") ?? "";
+        if (!/^\d+$/.test(id) || !cfg.posts[id]) return json({ error: "الفيديو مش في اللوحة" }, 400);
+        return json(await backfillComments({ ...opts, id }));
+      }
+      return json(await backfillDms(opts));
+    } catch (e) { return json({ error: e.message }, 502); }
+  }
   let body = {};
   if (action !== "resync") {
     try { body = await request.json(); } catch { return json({ error: "bad json" }, 400); }
