@@ -659,7 +659,7 @@ async function loadHealth(quiet) {
     $("#statusDot .sdot").className = "sdot " + h.level;
     $("#healthHero").innerHTML = `<div class="hero"><div class="big ${h.level}">${LEVEL[h.level][1]}</div><div><h2>${LEVEL[h.level][0]}</h2><div class="tiny muted">آخر فحص ${ago(h.at)}</div></div></div>`;
     $("#healthList").innerHTML = h.checks.map((c) => `<div class="check"><span class="sdot ${c.level}"></span>
-      <div><div style="font-weight:600">${esc(c.title)}</div>${c.detail ? `<div class="small muted">${esc(c.detail)}</div>` : ""}</div>
+      <div><div style="font-weight:600">${esc(c.title)}</div>${c.detail ? `<div class="small muted">${esc(c.detail)}</div>` : ""}${c.sub ? `<div class="small muted">${esc(c.sub.label)}: ${esc(ago(c.sub.at))}</div>` : ""}</div>
       <div class="when">${c.at ? esc(ago(c.at)) : ""}</div></div>`).join("");
     $("#lostBox").classList.toggle("hide", !h.lost.length);
     $("#lostList").innerHTML = h.lost.map((l) => `<div class="toprow"><div class="cap">${l.user ? `<a href="https://instagram.com/${esc(l.user)}" target="_blank" rel="noopener">@${esc(l.user)}</a>` : "حد"} — ${esc(l.text)}</div><span class="tiny muted">${esc(ago(l.at))}</span></div>`).join("");

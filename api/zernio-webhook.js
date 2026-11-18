@@ -11,6 +11,7 @@
 //    link, or «follow first» with a button to try again.
 //  - a plain message containing a video's trigger word, on a video with «الكلمة في الخاص» on: same answer.
 import crypto from "node:crypto";
+import { waitUntil } from "@vercel/functions";
 import { loadConfig, saveConfig, findRuleV2 } from "../lib/config.js";
 import { hasZernio, automationLogs } from "../lib/zernio.js";
 import { automationBody, createOrAdopt, usesTapFirst, commentMatches } from "../lib/sync.js";
@@ -37,14 +38,24 @@ export async function POST(request) {
   let ev;
   try { ev = JSON.parse(raw); } catch { return Response.json({ error: "bad json" }, { status: 400 }); }
   const base = baseOf(request);
-  try {
-    if (ev.event === "message.received") return await onMessage(ev, base);
-    if (ev.event === "comment.received") return await onComment(ev, base);
-    return ok({ skipped: "event" });
-  } catch (e) {
-    console.error("zernio-webhook", e.message);
-    return Response.json({ error: e.message }, { status: 500 });
-  }
+  const work = (async () => {
+    try {
+      if (ev.event === "message.received") return await onMessage(ev, base);
+      if (ev.event === "comment.received") return await onComment(ev, base);
+      return ok({ skipped: "event" });
+    } catch (e) {
+      console.error("zernio-webhook", e.message);
+      return Response.json({ error: e.message }, { status: 500 });
+    }
+  })();
+  // Zernio gives a webhook only a few seconds. Quick answers (skips, standby…) are returned as they are; anything
+  // slower (waiting for Zernio's verdict, sending the DM) carries on after we've answered 200, so Zernio doesn't
+  // time out and send the same event again.
+  const late = Symbol("late");
+  const first = await Promise.race([work, new Promise((r) => setTimeout(() => r(late), timing.answerWithinMs))]);
+  if (first !== late) return first;
+  waitUntil(work);
+  return ok({ queued: true });
 }
 
 // ---------------------------------------------------------------- comments
@@ -107,7 +118,8 @@ async function fromRule(ev, cfg, id, base) {
   }
 }
 
-export const timing = { tries: 4, waitMs: 1200 }; // ~5s max, under Zernio's webhook timeout
+// tries × waitMs: how long to wait for Zernio's verdict (runs after the webhook has answered, see POST)
+export const timing = { tries: 5, waitMs: 1500, answerWithinMs: 2500 };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // "sent" | "repeat" | "blocked" | "none" — what the video's Zernio automation did with this comment.

@@ -72,6 +72,8 @@ globalThis.fetch = async (url, init = {}) => {
 const admin = await import("../api/admin.js");
 const hook = await import("../api/zernio-webhook.js");
 const assert = (c, msg) => { if (!c) { console.error("FAIL", msg); process.exit(1); } console.log("ok", msg); };
+const { DEFAULT_SETTINGS } = await import("../lib/config.js");
+const isOneOf = (text, setting) => DEFAULT_SETTINGS[setting].split("\n").includes(text);
 const req = (path, init = {}) => new Request("https://x" + path, { ...init, headers: { "x-admin-key": "abc", "content-type": "application/json" } });
 const getCfg = async () => (await admin.GET(req("/api/admin?action=config"))).json();
 const save = async (cfg, qs = "") => (await admin.POST(req("/api/admin" + qs, { method: "POST", body: JSON.stringify(cfg) }))).json();
@@ -95,7 +97,7 @@ let r = await save(d.config);
 assert(r.ok && r.report.failed === 0, "first save works");
 assert(r.report.created === 12, "the 12 old viaSocket videos get a Zernio automation each");
 const gta = autoFor("17978249321939264");
-assert(gta.isActive && gta.keywords.length === 0 && gta.dmMessage === "اتفضل اللينك 👇" && gta.commentReply === "بعتلك في الخاص 📩",
+assert(gta.isActive && gta.keywords.length === 0 && gta.dmMessage === "اتفضل اللينك 👇" && gta.dmMessageVariations.length === 5 && gta.commentReply === "بعتلك في الخاص 📩",
   "link video -> link text + default public reply");
 assert(gta.buttons[0].type === "url" && gta.buttons[0].url === "https://github.com/mutonby/openshorts"
   && gta.audience.followerStatus === "follower" && gta.audience.whenUnknown === "skip" && !gta.followGate.notFollowingMessage,
@@ -104,7 +106,7 @@ assert(gta.commentReplyVariations.length === 2 && gta.commentReplyVariations[1] 
 Z.followers.add("U4");
 let tapRes = await (await (await import("../api/zernio-webhook.js")).oldButton({ message: { platform: "instagram", direction: "incoming", sender: { id: "U4" } },
   conversation: { id: "CONVU4" }, metadata: { postbackPayload: "msg:17978249321939264" }, account: { username: "a" } })).json();
-assert(tapRes.answered === "link" && Z.sent.at(-1).message === "اتفضل اللينك 👇" && Z.sent.at(-1).buttons[0].url === "https://github.com/mutonby/openshorts" && Z.sent.at(-1).buttons[0].type === "url",
+assert(tapRes.answered === "link" && isOneOf(Z.sent.at(-1).message, "linkDm") && Z.sent.at(-1).buttons[0].url === "https://github.com/mutonby/openshorts" && Z.sent.at(-1).buttons[0].type === "url",
   "a follower tapping that button gets the real link button");
 tapRes = await (await (await import("../api/zernio-webhook.js")).oldButton({ message: { platform: "instagram", direction: "incoming", sender: { id: "U3" } },
   conversation: { id: "CONVU3" }, metadata: { postbackPayload: "msg:17978249321939264" }, account: { username: "a" } })).json();
@@ -133,7 +135,7 @@ c.settings.gateStyle = "link"; c.posts["17978249321939264"].gate = true; await s
 const g3 = autoFor("17978249321939264");
 const { tapFirstDm } = await import("../lib/sync.js");
 const t3 = tapFirstDm("17978249321939264", c.posts["17978249321939264"], c.settings);
-assert(g3.audience.whenUnknown === "skip" && t3.dmMessage === "دوس على الزرار تحت وهبعتلك اللينك 👇" && t3.buttons[0].title === "Open 🔗" && t3.buttons[0].type === "postback",
+assert(g3.audience.whenUnknown === "skip" && isOneOf(t3.dmMessage, "firstDm") && t3.buttons[0].title === "Open 🔗" && t3.buttons[0].type === "postback",
   "link style: the webhook's first DM is the link text with the video's own button name (its message waits for the check)");
 c.posts["17978249321939264"].gate = false;
 c.settings.gateStyle = "follow"; await save(c);
@@ -231,7 +233,7 @@ assert((await (await send(tap("https://github.com/mutonby/openshorts", { sender:
 c.settings.gateStyle = "link";
 c.posts["904"] = { enabled: true, mode: "link", link: "https://z.com", button: "Zed", gate: true, keywords: "zed", matchMode: "word" };
 await save(c);
-hook.timing.tries = 2; hook.timing.waitMs = 1;
+hook.timing.tries = 2; hook.timing.waitMs = 1; hook.timing.answerWithinMs = 60_000;
 const a904 = () => autoFor("904")._id;
 const cm = (author, text, follower, cid = "K" + Math.random().toString().slice(2, 8)) => ({ event: "comment.received", account: { username: "a" },
   comment: { id: cid, platformPostId: "904", postId: null, platform: "instagram", text, isReply: false,
@@ -239,7 +241,7 @@ const cm = (author, text, follower, cid = "K" + Math.random().toString().slice(2
 const before = Z.privateReplies.length;
 res = await (await send(cm("A1", "عايز Zed لو سمحت", null))).json();
 assert(res.answered === "tap-first" && Z.privateReplies.at(-1).buttons[0].type === "postback" && Z.privateReplies.at(-1).buttons[0].payload === "msg:904"
-  && Z.privateReplies.at(-1).buttons[0].title === "Zed" && Z.privateReplies.at(-1).message === "دوس على الزرار تحت وهبعتلك اللينك 👇", "unknown commenter gets the check DM (its own text) with a tap button");
+  && Z.privateReplies.at(-1).buttons[0].title === "Zed" && isOneOf(Z.privateReplies.at(-1).message, "firstDm"), "unknown commenter gets the check DM (its own text) with a tap button");
 assert(Z.publicReplies.at(-1).commentId === Z.privateReplies.at(-1).commentId, "…and the public reply");
 res = await (await send(cm("A2", "zed", false))).json();
 assert(res.answered === "tap-first", "known non-follower also gets the link-looking DM (not «not following»)");
@@ -344,6 +346,22 @@ const st = await (await admin.GET(req("/api/admin?action=stats&days=7"))).json()
 const v905 = st.top.find((x) => x.id === "905");
 assert(st.daily.length === 7 && v905 && v905.clicks >= 1 && v905.links >= 2 && st.totals.answered > 0, "stats: per video and per day");
 assert(typeof st.totals.followRate === "number", "stats: follow rate after the check");
+
+// --- slow work is finished after answering Zernio (no webhook timeout)
+c.settings.gateStyle = "link"; c.posts["905"].gate = true; c.posts["905"].enabled = true; await save(c);
+hook.timing.answerWithinMs = 1; hook.timing.waitMs = 30;
+const prSlow = Z.privateReplies.length;
+const slowEv = cm("S1", "five", null, "CS" + (Date.now() % 100000)); slowEv.comment.platformPostId = "905"; slowEv.post.platformPostId = "905";
+res = await (await send(slowEv)).json();
+assert(res.queued === true, "a slow comment answer returns «queued» to Zernio right away");
+await new Promise((r) => setTimeout(r, 300));
+assert(Z.privateReplies.length === prSlow + 1, "…and the DM still goes out in the background");
+assert((await (await send(dmEv("N7", "five", { metadata: { standby: true } }))).json()).skipped === "standby", "quick answers (standby) are still returned as they are");
+hook.timing.answerWithinMs = 60_000; hook.timing.waitMs = 1;
+
+const { cleanSettings } = await import("../lib/config.js");
+const up = cleanSettings({ linkDm: "اتفضل اللينك 👇", firstDm: "نص بتاعي" });
+assert(up.linkDm.split("\n").length === 6 && up.firstDm === "نص بتاعي", "the old single default text is upgraded to the six texts; a custom one is kept");
 
 // --- several texts for the first DM and the link DM
 c.settings.linkDm = "اتفضل اللينك 👇\nاللينك أهو 🔗\nدوس على الزرار 👇";
