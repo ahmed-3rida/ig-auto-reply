@@ -65,7 +65,7 @@ async function onComment(ev, base) {
   const id = String(c.platformPostId ?? ev.post?.platformPostId ?? "");
   if (!/^\d+$/.test(id) || c.author?.isOwnAccount || c.isReply) return ok({ skipped: "comment" });
   if (!hasZernio()) return ok({ skipped: "no-zernio" });
-  const cfg = await loadConfig({ fresh: true });
+  const cfg = await loadConfig(); // cached for a minute: every Blob read counts against Vercel's free quota
   if (!cfg.enabled) return ok({ skipped: "off" });
   return cfg.posts[id] ? firstDm(ev, cfg, id, base) : fromRule(ev, cfg, id, base);
 }

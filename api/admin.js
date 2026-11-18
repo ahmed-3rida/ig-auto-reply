@@ -4,7 +4,7 @@
 //   POST /api/admin  { enabled, settings, posts, rules } -> save, then update Zernio
 //   POST /api/admin?action=resync            -> send every video to Zernio again
 import crypto from "node:crypto";
-import { loadConfig, saveConfig, cleanConfig } from "../lib/config.js";
+import { loadConfig, saveConfig, cleanConfig, storageState } from "../lib/config.js";
 import { hasZernio, listAutomations, listPosts, deleteAutomation, ZernioError } from "../lib/zernio.js";
 import { syncAll, adoptExternal, statsByPost } from "../lib/sync.js";
 import { comments as backfillComments, dms as backfillDms } from "../lib/backfill.js";
@@ -58,7 +58,7 @@ export async function GET(request) {
 
   if (action === "config") {
     const { cfg, stats, zernio } = await current();
-    return json({ config: cfg, stats, zernio, storage: !!env("BLOB_READ_WRITE_TOKEN") });
+    return json({ config: cfg, stats, zernio, storage: !!env("BLOB_READ_WRITE_TOKEN"), storageState });
   }
 
   if (action === "media") {
@@ -163,9 +163,13 @@ export async function POST(request) {
       }
     }
     const report = hasZernio() ? await syncAll(next, { force: action === "resync" }) : null;
-    const saved = await saveConfig(next);
+    // If Vercel's Blob store refuses the write, Zernio already has the change (synced above) and settings are
+    // rebuilt from Zernio while the store is blocked — so report it instead of failing the save.
+    let saved = next, warning = "";
+    try { saved = await saveConfig(next); }
+    catch (e) { warning = "Zernio اتحدّث، بس التخزين في Vercel رفض الحفظ: " + String(e.message).slice(0, 120); }
     const { stats, zernio } = hasZernio() ? await current() : { stats: {}, zernio: { connected: false, error: "" } };
-    return json({ ok: true, config: saved, report, stats, zernio });
+    return json({ ok: true, config: saved, report, stats, zernio, warning, storageState });
   } catch (e) {
     return json({ error: e.message }, 500);
   }

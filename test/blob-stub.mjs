@@ -2,6 +2,7 @@
 globalThis.__blobs ??= [];
 let n = 0;
 export async function put(path, body) {
+  if (globalThis.__blobBlocked) throw new Error("Vercel Blob: Your store is blocked");
   const url = `https://blob.test/${path}`;
   globalThis.__blobs.push({ pathname: path, url, body, uploadedAt: new Date(Date.now() + n++).toISOString() });
   return { url, pathname: path };

@@ -402,7 +402,7 @@ const TABS = [["home", "الرئيسية"], ["perf", "الأداء"], ["videos",
 const PAGES = TABS.map(([k]) => k).concat("rules"); // «جاية» is reached from the videos page
 
 /* ---------------- state ---------------- */
-let KEY = "", CFG = null, SAVED = "", STATS = {}, ZERNIO = {}, MEDIA = [], AFTER = null, FILTER = "all", QUERY = "", PAGE = "home";
+let STORE = {}, KEY = "", CFG = null, SAVED = "", STATS = {}, ZERNIO = {}, MEDIA = [], AFTER = null, FILTER = "all", QUERY = "", PAGE = "home";
 let OVERVIEW = null, METRIC = "answered", DAYS = 14, EDIT = null; // EDIT = { kind: "post"|"rule", id, obj, media }
 
 const MODES = { link: "لينك", message: "رسالة", both: "رسالة + لينك" };
@@ -451,7 +451,7 @@ async function login(pw) {
   const d = await api("/api/admin?action=config");
   store.set("adm", pw);
   CFG = d.config; CFG.rules = CFG.rules || []; CFG.settings = CFG.settings || {};
-  SAVED = snapshot(); STATS = d.stats || {}; ZERNIO = d.zernio || {};
+  SAVED = snapshot(); STATS = d.stats || {}; ZERNIO = d.zernio || {}; STORE = d.storageState || {};
   $("#login").classList.add("hide"); $("#app").classList.remove("hide");
   showBanners(d.storage);
   $("#enabled").checked = CFG.enabled !== false; paintGlobal();
@@ -469,6 +469,7 @@ $("#logout").addEventListener("click", () => { store.set("adm", null); location.
 function showBanners(storage) {
   const b = [];
   if (!storage) b.push(["err", "التخزين مش متوصل — الإعدادات مش هتتحفظ (BLOB_READ_WRITE_TOKEN)."]);
+  if (STORE.source === "zernio") b.push(["warn", "التخزين في Vercel (Blob) مش شغال دلوقتي (" + (STORE.error || "") + "). الردود شغالة عادي من إعدادات Zernio، والتعديلات بتتبعت لـ Zernio، بس النصوص العامة ممكن ترجع للافتراضي لحد ما التخزين يرجع."]);
   if (!ZERNIO.connected) b.push(["err", "Zernio مش متوصل — حط ZERNIO_API_KEY في Vercel وإلا الردود مش هتشتغل."]);
   else if (ZERNIO.error) b.push(["err", "مقدرتش أوصل لـ Zernio: " + ZERNIO.error]);
   if (CFG.enabled === false) b.push(["warn", "الرد التلقائي متوقف دلوقتي — مفيش أي رد هيتبعت لحد ما تشغّله من فوق."]);
@@ -524,7 +525,9 @@ async function save() {
     showBanners(true); renderAll();
     const r = d.report;
     $("#savebar").classList.remove("hide");
-    if (r && r.failed) saveErr(`اتحفظ، بس Zernio رفض ${r.failed} فيديو — افتحه وشوف الغلط`);
+    if (d.storageState) STORE = d.storageState;
+    if (d.warning) { $("#saveMsg").className = "msg err"; $("#saveMsg").textContent = "اتبعت لـ Zernio ✓ — " + d.warning; showBanners(true); }
+    else if (r && r.failed) saveErr(`اتحفظ، بس Zernio رفض ${r.failed} فيديو — افتحه وشوف الغلط`);
     else { $("#saveMsg").className = "msg ok"; $("#saveMsg").textContent = "اتحفظ ✓" + (r ? ` — ${r.created} جديد، ${r.updated} اتعدّل، ${r.paused} اتوقف` : ""); setTimeout(() => { if (!isDirty()) $("#savebar").classList.add("hide"); }, 2500); }
   } catch (err) { saveErr("الحفظ فشل: " + err.message); }
   $("#save").disabled = false;

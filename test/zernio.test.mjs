@@ -5,6 +5,7 @@ process.env.VERIFY_TOKEN = "abc";
 process.env.BLOB_READ_WRITE_TOKEN = "test";
 process.env.ZERNIO_API_KEY = "zk";
 process.env.ZERNIO_WEBHOOK_SECRET = "whsec";
+process.env.EVENTS_BLOB = "1";
 delete process.env.IG_ACCESS_TOKEN;
 
 const ACC = "6afd7f3a4a29a11a85dec5e5", PROF = "6afd7f1800e3468668318f56";
@@ -18,7 +19,7 @@ Z.autos.set("6afd84f0555dda08a89e3f12", { _id: "6afd84f0555dda08a89e3f12", platf
 const realFetch = globalThis.fetch;
 globalThis.fetch = async (url, init = {}) => {
   url = String(url);
-  if (url.startsWith("https://blob.test/")) return new Response(globalThis.__blobs.find((x) => x.url === url).body);
+  if (url.startsWith("https://blob.test/")) return Z.blobBlocked ? new Response("Your store is blocked\n", { status: 403 }) : new Response(globalThis.__blobs.find((x) => x.url === url).body);
   const u = new URL(url);
   if (u.origin !== "https://zernio.com") throw new Error("unexpected fetch " + url);
   const method = init.method ?? "GET", body = init.body ? JSON.parse(init.body) : null, path = u.pathname.replace(/^\/api/, "");
@@ -395,6 +396,19 @@ const vs = await (await admin.GET(req("/api/admin?action=videostats&days=7"))).j
 assert(vs.posts.length === 2 && vs.posts[0].id === "18091667573283321" && vs.posts[0].views === 1154 && vs.posts[0].avgWatch === 7.8 && vs.totals.views === 10678,
   "video stats: per video views, reach, likes… and totals");
 assert(vs.daily.length === 7 && vs.daily.at(-1).views === 500, "video stats: account views per day");
+
+// --- Blob store blocked: settings are rebuilt from Zernio instead of the built-in defaults
+const { loadConfig, storageState } = await import("../lib/config.js");
+Z.blobBlocked = true; globalThis.__blobBlocked = true;
+const fb = await loadConfig({ fresh: true });
+assert(storageState.source === "zernio" && /blocked/.test(storageState.error), "a blocked store is detected");
+assert(fb.posts["905"]?.automationId && fb.posts["905"].link === "https://five.com" && fb.posts["905"].gate === true && fb.posts["18098088275062213"],
+  "videos (link, follow check, automation) come back from Zernio, not the 12 built-in defaults");
+assert(fb.settings.linkDm.split("\n")[0] === autoFor("905").dmMessage, "the link texts come back from Zernio too");
+const blockedSave = await save(fb);
+assert(blockedSave.ok && /رفض الحفظ/.test(blockedSave.warning), "saving while blocked still updates Zernio and says the store refused");
+Z.blobBlocked = false; globalThis.__blobBlocked = false;
+assert((await loadConfig({ fresh: true })) && storageState.source === "blob", "back to the store once it reads again");
 
 globalThis.fetch = realFetch;
 console.log("all good");

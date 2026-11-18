@@ -20,7 +20,7 @@ export async function GET() {
     const posts = Object.values(cfg.posts);
     out.loaded = { enabled: cfg.enabled, posts: posts.length, on: posts.filter((p) => p.enabled).length,
       gateOn: posts.filter((p) => p.gate).length, withAutomation: posts.filter((p) => p.automationId).length,
-      hasFreeLLM: !!cfg.posts["18091667573283321"], gateStyle: cfg.settings.gateStyle, textsV2: cfg.settings.textsV2 };
+      gateStyle: cfg.settings.gateStyle, source: (await import("../lib/config.js")).storageState.source };
   } catch (e) { out.loaded = { error: String(e.message).slice(0, 200) }; }
   return Response.json(out, { headers: { "Cache-Control": "no-store" } });
 }
