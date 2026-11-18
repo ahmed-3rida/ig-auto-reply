@@ -83,8 +83,9 @@ assert(r.report.created === 12, "the 12 old viaSocket videos get a Zernio automa
 const gta = autoFor("17978249321939264");
 assert(gta.isActive && gta.keywords.length === 0 && gta.dmMessage === "اتفضل اللينك 👇" && gta.commentReply === "بعتلك في الخاص 📩",
   "link video -> link text + default public reply");
-assert(gta.buttons[0].type === "postback" && gta.buttons[0].title === "Link" && gta.buttons[0].payload === "msg:17978249321939264"
-  && gta.audience.followerStatus === "any", "default (link style): the first DM is always the link text with a tap button; the tap does the follow check");
+assert(gta.buttons[0].type === "url" && gta.buttons[0].url === "https://github.com/mutonby/openshorts"
+  && gta.audience.followerStatus === "follower" && gta.audience.whenUnknown === "skip" && !gta.followGate.notFollowingMessage,
+  "default (link style): Zernio sends the real link only to known followers and stays silent for everyone else");
 assert(gta.commentReplyVariations.length === 2 && gta.commentReplyVariations[1] === "تم الإرسال ✅", "default public reply: each line is a random variation");
 Z.followers.add("U4");
 let tapRes = await (await (await import("../api/zernio-webhook.js")).oldButton({ message: { platform: "instagram", direction: "incoming", sender: { id: "U4" } },
@@ -94,7 +95,7 @@ assert(tapRes.answered === "link" && Z.sent.at(-1).buttons[0].url === "https://g
 tapRes = await (await (await import("../api/zernio-webhook.js")).oldButton({ message: { platform: "instagram", direction: "incoming", sender: { id: "U3" } },
   conversation: { id: "CONVU3" }, metadata: { postbackPayload: "msg:17978249321939264" }, account: { username: "a" } })).json();
 assert(tapRes.answered === "follow-first" && Z.sent.at(-1).buttons.at(-1).payload === "msg:17978249321939264", "a non-follower gets «follow first» with the same button to try again");
-assert(Z.autos.get("6afd84f0555dda08a89e3f12").buttons?.[0]?.payload === "msg:18098088275062213", "the hand-made automation is updated in place, not duplicated");
+assert(Z.autos.get("6afd84f0555dda08a89e3f12").buttons?.[0]?.url === "https://www.instagram.com/p/Da_MSaTjZqT/", "the hand-made automation is updated in place, not duplicated");
 assert([...Z.autos.values()].filter((a) => a.platformPostId === "18098088275062213").length === 1, "still one automation on that post");
 
 // --- saving again without changes sends nothing
@@ -116,8 +117,10 @@ assert(g2.commentReply === "بعتلك ✅" && g2.commentReplyVariations[0] === 
 assert(g2.audience.followerStatus === "any", "follow check can be turned off per video");
 c.settings.gateStyle = "link"; c.posts["17978249321939264"].gate = true; await save(c);
 const g3 = autoFor("17978249321939264");
-assert(g3.dmMessage === "اتفضل اللينك 👇" && g3.buttons[0].title === "Open 🔗" && g3.buttons[0].type === "postback",
-  "link style: first DM is the link text with the video's own button name (its message waits for the check)");
+const { tapFirstDm } = await import("../lib/sync.js");
+const t3 = tapFirstDm("17978249321939264", c.posts["17978249321939264"], c.settings);
+assert(g3.audience.whenUnknown === "skip" && t3.dmMessage === "اتفضل اللينك 👇" && t3.buttons[0].title === "Open 🔗" && t3.buttons[0].type === "postback",
+  "link style: the webhook's first DM is the link text with the video's own button name (its message waits for the check)");
 c.posts["17978249321939264"].gate = false;
 c.settings.gateStyle = "follow"; await save(c);
 assert(autoFor("17988282846093039").followGate.buttonLabel === "تابعت ✅", "changing a global text updates every video");
@@ -208,6 +211,30 @@ assert((await (await send(tap(IDM, { sender: "U6", standby: true }))).json()).sk
 assert((await (await send(tap("zernio_follow_gate:abc", { sender: "U5" }))).json()).skipped === "not-old-button", "Zernio's own buttons are not touched");
 c.posts["17978249321939264"].enabled = false; await save(c);
 assert((await (await send(tap("https://github.com/mutonby/openshorts", { sender: "U8" }))).json()).skipped === "video-off", "a video turned off in the panel stops its old buttons too");
+
+// --- link style: comments on panel videos (webhook sends the first DM to anyone not known to follow)
+c.settings.gateStyle = "link";
+c.posts["904"] = { enabled: true, mode: "link", link: "https://z.com", button: "Zed", gate: true, keywords: "zed", matchMode: "word" };
+await save(c);
+const cm = (author, text, follower) => ({ event: "comment.received", account: { username: "a" },
+  comment: { id: "K" + Math.random().toString().slice(2, 8), platformPostId: "904", postId: null, platform: "instagram", text, isReply: false,
+    author: { id: author, instagramProfile: { isFollower: follower } } }, post: { platformPostId: "904", content: "x" } });
+const before = Z.privateReplies.length;
+res = await (await send(cm("A1", "عايز Zed لو سمحت", null))).json();
+assert(res.answered === "tap-first" && Z.privateReplies.at(-1).buttons[0].type === "postback" && Z.privateReplies.at(-1).buttons[0].payload === "msg:904"
+  && Z.privateReplies.at(-1).buttons[0].title === "Zed" && Z.privateReplies.at(-1).message === "اتفضل اللينك 👇", "unknown commenter gets the link-looking DM with a tap button");
+assert(Z.publicReplies.at(-1).commentId === Z.privateReplies.at(-1).commentId, "…and the public reply");
+res = await (await send(cm("A2", "zed", false))).json();
+assert(res.answered === "tap-first", "known non-follower also gets the link-looking DM (not «not following»)");
+res = await (await send(cm("A3", "zed", true))).json();
+assert(res.skipped === "follower" && Z.privateReplies.length === before + 2, "known follower is left to Zernio, which sends the real link");
+res = await (await send(cm("A1", "zed again", null))).json();
+assert(res.skipped === "already-answered", "the same person commenting again gets one DM");
+res = await (await send(cm("A4", "zedd", null))).json();
+assert(res.skipped === "no-keyword", "trigger words are respected (word match)");
+c.posts["904"].gate = false; await save(c);
+res = await (await send(cm("A5", "zed", null))).json();
+assert(res.skipped === "known", "follow check off: Zernio sends the link to everyone, webhook stays out");
 
 globalThis.fetch = realFetch;
 console.log("all good");

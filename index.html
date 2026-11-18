@@ -260,7 +260,7 @@ function renderSettings(){
   const box = $("#settings"); box.innerHTML = ""; CFG.settings = CFG.settings || {};
   const st = document.createElement("div"); st.style.gridColumn = "1/-1";
   st.innerHTML = `<div class="lbl"><span>أول رسالة في الخاص بعد الكومنت (للفيديوهات اللي التحقق من الفولو شغال فيها)</span></div>
-    <select style="width:100%"><option value="link">زي اللينك (لكل الناس): «الرسالة اللي فوق زرار اللينك» + زرار باسم زرار اللينك — الدوسة بتتحقق من الفولو</option>
+    <select style="width:100%"><option value="link">زي اللينك: المتابع يوصله اللينك على طول، وغيره «الرسالة اللي فوق زرار اللينك» + زرار باسم زرار اللينك — الدوسة بتتحقق من الفولو</option>
     <option value="follow">اطلب الفولو الأول: «رسالة اعمل فولو الأول» + زرار «عملت فولو» + زرار فتح الحساب</option></select>`;
   const sel = st.querySelector("select"); sel.value = CFG.settings.gateStyle || "link";
   sel.addEventListener("change", () => { CFG.settings.gateStyle = sel.value; markDirty(); });

@@ -16,7 +16,7 @@ import crypto from "node:crypto";
 import { loadConfig, saveConfig, findRuleV2 } from "../lib/config.js";
 import { hasZernio, privateReply, publicReply, sendMessage, isFollower } from "../lib/zernio.js";
 import { resolve } from "./link-v2.js";
-import { automationBody, createOrAdopt, dmFor } from "../lib/sync.js";
+import { automationBody, createOrAdopt, dmFor, tapFirstDm, usesTapFirst, commentMatches } from "../lib/sync.js";
 
 const env = (k, d = "") => process.env[k] ?? d;
 const busy = new Set(); // posts being set up right now (per server instance)
@@ -47,7 +47,7 @@ export async function POST(request) {
 
   const cfg = await loadConfig({ fresh: true });
   if (!cfg.enabled) return ok({ skipped: "off" });
-  if (cfg.posts[id]) return ok({ skipped: "known" });         // the video's own automation handles it
+  if (cfg.posts[id]) return firstDm(ev, cfg, id);
   const rule = findRuleV2(ev.post?.content ?? "", cfg.rules);
   if (!rule) return ok({ skipped: "no-rule" });
   if (busy.has(id)) return ok({ skipped: "busy" });
@@ -145,4 +145,34 @@ export async function oldButton(ev) {
     console.error("old button", e.message);
     return Response.json({ error: e.message }, { status: 500 });
   }
+}
+
+// ---- "link" style: first DM for anyone not known to follow ----
+// The video's Zernio automation answers known followers with the real link and stays silent for everyone
+// else; this answers those with the link text + a tap button. Instagram allows one private reply per comment,
+// so if both ever answer the same comment, the second is simply refused.
+const answered = new Map(); // `${author}|${post}` -> time, so repeated comments get one DM (per instance)
+const REPEAT_MS = 24 * 3600 * 1000;
+
+export async function firstDm(ev, cfg, id) {
+  const c = ev.comment, entry = cfg.posts[id];
+  if (!entry.enabled || !usesTapFirst(entry, cfg.settings)) return ok({ skipped: "known" });
+  if (!commentMatches(entry, c.text)) return ok({ skipped: "no-keyword" });
+  if (c.author?.instagramProfile?.isFollower === true) return ok({ skipped: "follower" }); // Zernio sends the link
+  const dm = tapFirstDm(id, entry, cfg.settings);
+  if (!dm) return ok({ skipped: "nothing-to-send" });
+  const key = `${c.author?.id}|${id}`, now = Date.now();
+  if (now - (answered.get(key) ?? 0) < REPEAT_MS) return ok({ skipped: "already-answered" });
+  answered.set(key, now);
+  const postId = c.postId || id;
+  try {
+    await privateReply(postId, c.id, dm.dmMessage, dm.buttons);
+  } catch (e) {
+    console.error("first DM", id, e.message);
+    return ok({ skipped: "private-reply-refused", error: e.message });
+  }
+  const pick = (s) => { const l = String(s ?? "").split("\n").map((x) => x.trim()).filter(Boolean).slice(0, 6); return l[Math.floor(Math.random() * l.length)]; };
+  const reply = pick(entry.reply) || pick(cfg.settings.reply);
+  if (reply) await publicReply(postId, c.id, reply).catch((e) => console.error("public reply failed", e.message));
+  return ok({ answered: "tap-first" });
 }
