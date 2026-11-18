@@ -361,7 +361,9 @@ hook.timing.answerWithinMs = 60_000; hook.timing.waitMs = 1;
 
 const { cleanSettings } = await import("../lib/config.js");
 const up = cleanSettings({ linkDm: "اتفضل اللينك 👇", firstDm: "نص بتاعي" });
-assert(up.linkDm.split("\n").length === 6 && up.firstDm === "نص بتاعي", "the old single default text is upgraded to the six texts; a custom one is kept");
+assert(up.linkDm.split("\n").length === 6 && up.firstDm.split("\n")[0] === "نص بتاعي" && up.firstDm.split("\n").length === 6 && up.textsV2,
+  "one-time upgrade: a single saved text stays first and gets 5 more");
+assert(cleanSettings({ ...up, firstDm: "نص واحد بس" }).firstDm === "نص واحد بس", "after the upgrade, a single text chosen later stays single");
 
 // --- several texts for the first DM and the link DM
 c.settings.linkDm = "اتفضل اللينك 👇\nاللينك أهو 🔗\nدوس على الزرار 👇";
