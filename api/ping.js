@@ -2,7 +2,9 @@
 import { loadConfig, storageState } from "../lib/config.js";
 
 export async function GET() {
-  const out = { blobToken: !!process.env.BLOB_READ_WRITE_TOKEN, loaded: null };
+  const out = { blobToken: !!process.env.BLOB_READ_WRITE_TOKEN, loaded: null,
+    // names only (never values) of Supabase variables the site can see
+    supabaseEnv: Object.keys(process.env).filter((k) => /SUPABASE|POSTGRES/i.test(k)).sort() };
   try {
     const cfg = await loadConfig();
     const posts = Object.values(cfg.posts);
