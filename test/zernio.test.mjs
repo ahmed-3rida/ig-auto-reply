@@ -2,7 +2,7 @@
 // Run: node --import ./test/register.mjs test/zernio.test.mjs
 import crypto from "node:crypto";
 process.env.VERIFY_TOKEN = "abc";
-process.env.BLOB_READ_WRITE_TOKEN = "test";
+process.env.BLOB_READ_WRITE_TOKEN = "vercel_blob_rw_TESTSTORE_secret";
 process.env.ZERNIO_API_KEY = "zk";
 process.env.ZERNIO_WEBHOOK_SECRET = "whsec";
 process.env.EVENTS_BLOB = "1";
@@ -19,7 +19,11 @@ Z.autos.set("6afd84f0555dda08a89e3f12", { _id: "6afd84f0555dda08a89e3f12", platf
 const realFetch = globalThis.fetch;
 globalThis.fetch = async (url, init = {}) => {
   url = String(url);
-  if (url.startsWith("https://blob.test/")) return Z.blobBlocked ? new Response("Your store is blocked\n", { status: 403 }) : new Response(globalThis.__blobs.find((x) => x.url === url).body);
+  if (url.startsWith("https://teststore.public.blob.vercel-storage.com/")) {
+    if (Z.blobBlocked) return new Response("Your store is blocked\n", { status: 403 });
+    const hit = globalThis.__blobs.find((x) => x.url === url);
+    return hit ? new Response(hit.body) : new Response("Not found", { status: 404 });
+  }
   const u = new URL(url);
   if (u.origin !== "https://zernio.com") throw new Error("unexpected fetch " + url);
   const method = init.method ?? "GET", body = init.body ? JSON.parse(init.body) : null, path = u.pathname.replace(/^\/api/, "");
@@ -396,6 +400,11 @@ const vs = await (await admin.GET(req("/api/admin?action=videostats&days=7"))).j
 assert(vs.posts.length === 2 && vs.posts[0].id === "18091667573283321" && vs.posts[0].views === 1154 && vs.posts[0].avgWatch === 7.8 && vs.totals.views === 10678,
   "video stats: per video views, reach, likes… and totals");
 assert(vs.daily.length === 7 && vs.daily.at(-1).views === 500, "video stats: account views per day");
+
+// --- reading the settings doesn't list the store (list() has a tiny free quota)
+const lc0 = globalThis.__listCalls ?? 0;
+await (await import("../lib/config.js")).loadConfig({ fresh: true });
+assert((globalThis.__listCalls ?? 0) === lc0, "settings are read by URL, without list()");
 
 // --- Blob store blocked: settings are rebuilt from Zernio instead of the built-in defaults
 const { loadConfig, storageState } = await import("../lib/config.js");
