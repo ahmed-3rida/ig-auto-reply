@@ -74,7 +74,8 @@ export async function POST(request) {
         { type: "url", title: cfg.settings.profileButton, url: `https://www.instagram.com/${ev.account?.username ?? ""}/` },
       ]);
     }
-    const reply = (entry.reply ?? "").split("\n").map((x) => x.trim()).filter(Boolean)[0] || cfg.settings.reply;
+    const pick = (s) => { const l = String(s ?? "").split("\n").map((x) => x.trim()).filter(Boolean).slice(0, 6); return l[Math.floor(Math.random() * l.length)]; };
+    const reply = pick(entry.reply) || pick(cfg.settings.reply);
     await publicReply(postId, c.id, reply).catch((e) => console.error("public reply failed", e.message));
     return ok({ created: auto._id, answered: true });
   } catch (e) {
