@@ -242,7 +242,13 @@ export async function tiktokMessage(ev) {
   if (!lock(`tt|${sender}|${hit.id}`)) return ok({ skipped: "double-tap" });
   const message = tiktokDmText(hit.entry, cfg.settings);
   if (!message) return ok({ skipped: "video-off" });
-  await sendTiktokMessage(accountId, conversationId, message);
+  try { await sendTiktokMessage(accountId, conversationId, message); }
+  catch (e) {
+    // TikTok refuses business DMs for this account (no Advanced Access / outside the 48h window): a retry
+    // won't change that, so answer 200 and say why instead of making Zernio send the event again
+    if (e.status >= 400 && e.status < 500) return ok({ skipped: "tiktok-refused", video: hit.id, error: String(e.message).slice(0, 200) });
+    throw e;
+  }
   await logEvent("dm", hit.id, "tt:" + sender);
   return ok({ answered: "tiktok", video: hit.id });
 }
