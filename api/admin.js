@@ -12,6 +12,7 @@ import { stats } from "../lib/stats.js";
 import { health } from "../lib/health.js";
 import { videoStats } from "../lib/videostats.js";
 import { baseOf } from "../lib/respond.js";
+import { tiktokAccount, publishTiktok, refreshTiktok, syncTiktok } from "../lib/tiktok.js";
 
 export const maxDuration = 60; // the «answer what was missed» buttons work in batches of up to ~45s
 
@@ -37,8 +38,9 @@ const denied = () => password()
 // Current config with automations made directly in Zernio folded in, plus per-video numbers.
 async function current() {
   const cfg = await loadConfig({ fresh: true });
-  const out = { cfg, stats: {}, zernio: { connected: hasZernio(), error: "" } };
+  const out = { cfg, stats: {}, zernio: { connected: hasZernio(), error: "" }, tiktok: { connected: false, username: "" } };
   if (!hasZernio()) return out;
+  try { const t = await tiktokAccount(); out.tiktok = { connected: true, username: t.username }; } catch {}
   try {
     const autos = await listAutomations();
     adoptExternal(cfg, autos);
@@ -57,8 +59,8 @@ export async function GET(request) {
   const action = u.searchParams.get("action");
 
   if (action === "config") {
-    const { cfg, stats, zernio } = await current();
-    return json({ config: cfg, stats, zernio, storage: !!env("BLOB_READ_WRITE_TOKEN"), storageState });
+    const { cfg, stats, zernio, tiktok } = await current();
+    return json({ config: cfg, stats, zernio, tiktok, storage: !!env("BLOB_READ_WRITE_TOKEN"), storageState });
   }
 
   if (action === "media") {
@@ -101,6 +103,18 @@ export async function GET(request) {
     return json({ items, after: data.paging?.next ? data.paging?.cursors?.after : null });
   }
 
+  if (action === "tiktok-status") {
+    const id = u.searchParams.get("id") ?? "";
+    const cfg = await loadConfig({ fresh: true });
+    if (!cfg.posts[id]?.tiktok) return json({ error: "الفيديو ده متنشرش على تيك توك" }, 404);
+    try {
+      const before = JSON.stringify(cfg.posts[id].tiktok);
+      const t = await refreshTiktok(cfg.posts[id]);
+      if (JSON.stringify(t) !== before) await saveConfig(cfg);
+      return json({ tiktok: t });
+    } catch (e) { return json({ error: e.message }, 502); }
+  }
+
   if (action === "health") {
     try { return json(await health(await loadConfig({ fresh: true }))); } catch (e) { return json({ error: e.message }, 502); }
   }
@@ -138,6 +152,20 @@ export async function POST(request) {
       return json(await backfillDms(opts));
     } catch (e) { return json({ error: e.message }, 502); }
   }
+  if (action === "tiktok-publish") {
+    if (!hasZernio()) return json({ error: "Zernio مش متوصل" }, 400);
+    const id = u.searchParams.get("id") ?? "";
+    let body = {};
+    try { body = await request.json(); } catch { return json({ error: "bad json" }, 400); }
+    if (body.confirm !== true) return json({ error: "علّم إنك راجعت الفيديو والكابشن الأول" }, 400);
+    const cfg = await loadConfig({ fresh: true });
+    if (!/^\d+$/.test(id) || !cfg.posts[id]) return json({ error: "الفيديو مش في اللوحة — شغّله واحفظ الأول" }, 400);
+    try {
+      const t = await publishTiktok(cfg, id, { caption: body.caption, word: body.word });
+      await saveConfig(cfg);
+      return json({ tiktok: t });
+    } catch (e) { return json({ error: e.message }, e instanceof ZernioError && e.status < 500 ? e.status : 502); }
+  }
   let body = {};
   if (action !== "resync") {
     try { body = await request.json(); } catch { return json({ error: "bad json" }, 400); }
@@ -152,6 +180,7 @@ export async function POST(request) {
       // Zernio bookkeeping comes from the server, never from the browser.
       for (const [id, p] of Object.entries(next.posts)) {
         for (const k of SERVER_FIELDS) p[k] = now.posts[id]?.[k] ?? "";
+        if (now.posts[id]?.tiktok) p.tiktok = now.posts[id].tiktok; else delete p.tiktok;
       }
       // A video removed from the panel: remove its automation on Zernio too.
       if (hasZernio()) {
@@ -159,10 +188,13 @@ export async function POST(request) {
           if (p.automationId && !next.posts[id]) {
             await deleteAutomation(p.automationId).catch((e) => { if (!(e instanceof ZernioError && e.status === 404)) throw e; });
           }
+          // its TikTok comment replies go too (the TikTok video itself stays on TikTok)
+          if (p.tiktok?.automationId && !next.posts[id]) await deleteAutomation(p.tiktok.automationId).catch(() => {});
         }
       }
     }
     const report = hasZernio() ? await syncAll(next, { force: action === "resync" }) : null;
+    if (hasZernio()) await syncTiktok(next).catch((e) => console.error("syncTiktok", e.message));
     // If Vercel's Blob store refuses the write, Zernio already has the change (synced above) and settings are
     // rebuilt from Zernio while the store is blocked — so report it instead of failing the save.
     let saved = next, warning = "";

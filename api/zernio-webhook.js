@@ -17,6 +17,8 @@ import { hasZernio, automationLogs } from "../lib/zernio.js";
 import { automationBody, createOrAdopt, usesTapFirst, commentMatches } from "../lib/sync.js";
 import { answerComment, answerInDm, entryForPayload, baseOf } from "../lib/respond.js";
 import { autoKeywords } from "../lib/autokw.js";
+import { findTiktokVideo, tiktokDmText, sendTiktokMessage } from "../lib/tiktok.js";
+import { logEvent } from "../lib/events.js";
 
 const env = (k, d = "") => process.env[k] ?? d;
 const busy = new Set(); // posts being set up right now (per server instance)
@@ -153,6 +155,7 @@ const lock = (key) => {
 
 async function onMessage(ev, base) {
   const m = ev.message ?? {}, meta = ev.metadata ?? {};
+  if (m.platform === "tiktok") return tiktokMessage(ev);
   if (m.platform !== "instagram" || m.direction !== "incoming") return ok({ skipped: "not-a-button" });
   const payload = String(meta.postbackPayload ?? "").trim();
   if (payload) return oldButton(ev, base);
@@ -220,4 +223,26 @@ export function findDmVideo(cfg, text, auto = new Map()) {
     if (!best || len > best.len) best = { id, entry: p, len };
   }
   return best && { id: best.id, entry: best.entry };
+}
+
+// A TikTok DM with a video's word: the link as plain text (TikTok has no DM buttons and no follow check).
+export async function tiktokMessage(ev) {
+  const m = ev.message ?? {};
+  if (m.direction !== "incoming") return ok({ skipped: "outgoing" });
+  const text = String(m.text ?? "").trim();
+  if (!text) return ok({ skipped: "no-text" });
+  if (!hasZernio()) return ok({ skipped: "no-zernio" });
+  const cfg = await loadConfig();
+  if (!cfg.enabled || cfg.settings.tiktok === false) return ok({ skipped: "off" });
+  const hit = findTiktokVideo(cfg, text, await autoKeywords().catch(() => new Map()));
+  if (!hit) return ok({ skipped: "no-keyword" });
+  const sender = String(m.sender?.id ?? ""), conversationId = ev.conversation?.id ?? m.conversationId;
+  const accountId = ev.account?.id ?? ev.account?.accountId ?? m.accountId;
+  if (!sender || !conversationId || !accountId) return ok({ skipped: "no-sender" });
+  if (!lock(`tt|${sender}|${hit.id}`)) return ok({ skipped: "double-tap" });
+  const message = tiktokDmText(hit.entry, cfg.settings);
+  if (!message) return ok({ skipped: "video-off" });
+  await sendTiktokMessage(accountId, conversationId, message);
+  await logEvent("dm", hit.id, "tt:" + sender);
+  return ok({ answered: "tiktok", video: hit.id });
 }

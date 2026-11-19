@@ -402,6 +402,7 @@ const TABS = [["home", "الرئيسية"], ["perf", "الأداء"], ["videos",
 const PAGES = TABS.map(([k]) => k).concat("rules"); // «جاية» is reached from the videos page
 
 /* ---------------- state ---------------- */
+let TIKTOK = { connected: false, username: "" };
 let STORE = {}, KEY = "", CFG = null, SAVED = "", STATS = {}, ZERNIO = {}, MEDIA = [], AFTER = null, FILTER = "all", QUERY = "", PAGE = "home";
 let OVERVIEW = null, METRIC = "answered", DAYS = 14, EDIT = null; // EDIT = { kind: "post"|"rule", id, obj, media }
 
@@ -451,7 +452,7 @@ async function login(pw) {
   const d = await api("/api/admin?action=config");
   store.set("adm", pw);
   CFG = d.config; CFG.rules = CFG.rules || []; CFG.settings = CFG.settings || {};
-  SAVED = snapshot(); STATS = d.stats || {}; ZERNIO = d.zernio || {}; STORE = d.storageState || {};
+  SAVED = snapshot(); STATS = d.stats || {}; ZERNIO = d.zernio || {}; STORE = d.storageState || {}; TIKTOK = d.tiktok || TIKTOK;
   $("#login").classList.add("hide"); $("#app").classList.remove("hide");
   showBanners(d.storage);
   $("#enabled").checked = CFG.enabled !== false; paintGlobal();
@@ -712,7 +713,7 @@ function renderVideos() {
     el.innerHTML = `
       ${m.thumb ? `<img class="thumb" loading="lazy" src="${esc(m.thumb)}" alt="">` : '<div class="thumb"></div>'}
       <div style="min-width:0"><div class="cap">${esc(m.caption) || '<span class="muted">بدون وصف</span>'}</div>
-        <div class="meta"><span class="chip">${m.type === "REEL" ? "Reel" : "بوست"}</span><span>${esc(date)}</span>${m.comments != null ? `<span>💬 ${fmt(m.comments)}</span>` : ""}${p && p.keywords ? `<span class="chip">${esc(p.keywords)}</span>` : ""}</div></div>
+        <div class="meta"><span class="chip">${m.type === "REEL" ? "Reel" : "بوست"}</span><span>${esc(date)}</span>${m.comments != null ? `<span>💬 ${fmt(m.comments)}</span>` : ""}${p && p.keywords ? `<span class="chip">${esc(p.keywords)}</span>` : ""}${p && p.tiktok ? `<span class="chip">TikTok${p.tiktok.status === "published" ? " ✓" : p.tiktok.status === "failed" ? " ✗" : " …"}</span>` : ""}</div></div>
       <div class="side"><span class="pill ${cls}">${esc(txt)}</span>
         ${st ? `<div class="nums"><span>رسايل <b>${fmt(st.dmsSent)}</b></span><span>ضغطات <b>${fmt(st.linkClicks)}</b></span></div>` : ""}</div>`;
     el.addEventListener("click", () => openPost(m.id));
@@ -810,6 +811,25 @@ function renderSettings() {
     f.addEventListener("input", () => { S[k] = f.value; changed(); });
     box.appendChild(d);
   }
+  // TikTok
+  const tth = document.createElement("h2"); tth.style.marginTop = "10px";
+  tth.textContent = "تيك توك" + (TIKTOK.connected ? " — @" + (TIKTOK.username || "") : " (مش متربط بـ Zernio)");
+  box.appendChild(tth);
+  const tt = document.createElement("label"); tt.className = "switch";
+  tt.innerHTML = '<input type="checkbox"> الرد على تيك توك: تحت الكومنتات، وعلى كلمة الفيديو في الخاص';
+  const tti = tt.querySelector("input"); tti.checked = S.tiktok !== false;
+  tti.addEventListener("change", () => { S.tiktok = tti.checked; changed(); });
+  box.appendChild(tt);
+  for (const [k, label, help] of [
+    ["ttReply", "الرد تحت كومنت تيك توك", "على الفيديوهات اللي اتنشرت من اللوحة. {الكلمة} = كلمة الفيديو. كل سطر رد مختلف، وكل كومنت بياخد واحد عشوائي (لحد 6)."],
+    ["ttDm", "الرسالة اللي فوق اللينك في خاص تيك توك", "تيك توك مفيهوش زراير، فاللينك بيتكتب في السطر اللي تحتها. كل سطر نص مختلف، وكل مرة بيتختار واحد عشوائي (لحد 6). مفيش تحقق من الفولو على تيك توك."],
+  ]) {
+    const d = document.createElement("div"); d.className = "field";
+    d.innerHTML = `<div class="label">${label}<small>1000 حرف</small></div><textarea dir="auto" maxlength="1000" rows="3"></textarea><div class="tiny muted">${help}</div>`;
+    const f = $("textarea", d); f.value = S[k] || "";
+    f.addEventListener("input", () => { S[k] = f.value; changed(); });
+    box.appendChild(d);
+  }
 }
 $("#resync").addEventListener("click", async () => {
   if (isDirty()) return saveErr("احفظ التعديلات الأول");
@@ -850,7 +870,7 @@ function openDrawer() {
 function closeDrawer() {
   $("#scrim").classList.remove("show"); $("#drawer").classList.remove("show");
   setTimeout(() => { $("#scrim").classList.add("hide"); $("#drawer").classList.add("hide"); }, 250);
-  document.body.style.overflow = ""; EDIT = null; renderVideos(); renderRules(); renderDmVideos();
+  document.body.style.overflow = ""; EDIT = null; clearTimeout(ttPoll); renderVideos(); renderRules(); renderDmVideos();
 }
 $("#closeDrawer").innerHTML = ICON.close;
 $("#closeDrawer").addEventListener("click", closeDrawer); $("#scrim").addEventListener("click", closeDrawer); $("#dDone").addEventListener("click", closeDrawer);
@@ -895,6 +915,8 @@ function buildEditor() {
 
     <div class="section"><h3>المعاينة</h3><div class="phone" data-preview></div></div>
 
+    ${kind === "post" ? `<div class="section" data-tt></div>` : ""}
+
     ${kind === "post" ? `<div class="section"><h3>كومنتات فاتت</h3>
       <div class="small muted">يرد على الكومنتات اللي اتكتبت قبل ما تشغّل الرد، أو ما اترد عليهاش. بيتأكد إن محدش رد عليها قبل كده، وبيرد على اللي عمرها أقل من 7 أيام بس (حد إنستجرام).</div>
       <div class="row wrap"><button class="btn" data-backfill>رد على الكومنتات اللي فاتت</button></div><div class="small" data-bfout></div></div>`
@@ -917,6 +939,71 @@ function buildEditor() {
   const del = $("[data-delrule]", b);
   if (del) del.addEventListener("click", () => { CFG.rules = CFG.rules.filter((r) => r !== obj); changed(); closeDrawer(); });
   refreshEditor();
+  if (kind === "post") renderTiktok();
+}
+
+/* ---------------- TikTok (inside a video) ---------------- */
+// same as lib/tiktok.js tiktokCaption: «اكتب X في الكومنت…» -> «ابعتلي X في الخاص وهيوصلك اللينك 📩»
+function ttCaption(caption, word) {
+  const re = /اكتب\s+[«"'“]?([^\s«»"'“”]{2,30})[»"'”]?\s+(?:في|ف)\s*(?:ال)?(?:كومنت|كومنتات|تعليق|تعليقات)[^\n]*/i;
+  const m = String(caption || "").match(re), w = word || (m ? m[1] : "");
+  if (!w) return String(caption || "").slice(0, 2200);
+  const line = "ابعتلي " + w + " في الخاص وهيوصلك اللينك 📩";
+  return (m ? String(caption).replace(re, line) : caption + "\n\n" + line).slice(0, 2200);
+}
+// a TikTok change made by the server: keep it out of «unsaved changes»
+function setServerTiktok(id, t) {
+  const dirty = isDirty();
+  if (CFG.posts[id]) CFG.posts[id].tiktok = t;
+  if (!dirty) SAVED = snapshot();
+  else { const sv = JSON.parse(SAVED); if (sv.posts[id]) { sv.posts[id].tiktok = t; SAVED = JSON.stringify(sv); } }
+}
+let ttPoll = null;
+function renderTiktok() {
+  const b = $("#dBody"), box = $("[data-tt]", b);
+  if (!box || !EDIT || EDIT.kind !== "post") return;
+  clearTimeout(ttPoll);
+  const { id, media } = EDIT, p = CFG.posts[id], t = p && p.tiktok;
+  const head = "<h3>تيك توك</h3>";
+  if (!TIKTOK.connected) { box.innerHTML = head + '<div class="small muted">حساب تيك توك مش متربط بـ Zernio. اربطه وافتح اللوحة تاني.</div>'; return; }
+  if (t && t.status !== "failed") {
+    const [cls, txt] = t.status === "published" ? ["ok", "اتنشر على تيك توك ✅"] : ["warn", "بيترفع على تيك توك…"];
+    box.innerHTML = head + `<div class="row wrap" style="gap:8px;align-items:center"><span class="pill ${cls}">${txt}</span>
+      ${t.url ? `<a href="${esc(t.url)}" target="_blank" rel="noopener">فتح على تيك توك ↗</a>` : ""}<button class="btn small" data-ttref>تحديث الحالة</button></div>
+      <div class="tiny muted" style="margin-top:6px">الكلمة: «${esc(t.word || "—")}» · الرد تحت الكومنتات: ${t.automationId ? "شغال" : "مش متظبط"} · الكلمة في خاص تيك توك: ${CFG.settings.tiktok !== false ? "شغالة" : "متقفلة من الإعدادات"}</div>
+      ${t.error ? `<div class="tiny msg err">${esc(t.error)}</div>` : ""}`;
+    const ref = async (quiet) => {
+      try { const r = await api("/api/admin?action=tiktok-status&id=" + id); setServerTiktok(id, r.tiktok); if (EDIT && EDIT.id === id) renderTiktok(); renderVideos(); }
+      catch (err) { if (!quiet) $("[data-ttref]", box).textContent = "فشل: " + err.message; }
+    };
+    $("[data-ttref]", box).addEventListener("click", () => ref(false));
+    if (t.status !== "published") ttPoll = setTimeout(() => { if (EDIT && EDIT.id === id) ref(true); }, 15000);
+    return;
+  }
+  const saved = JSON.parse(SAVED).posts[id];
+  if (!saved) { box.innerHTML = head + '<div class="small muted">شغّل الرد على الفيديو ده واحفظ الأول، وبعدها تقدر تنشره على تيك توك.</div>'; return; }
+  const word0 = (t && t.word) || String(p.keywords || "").split(/[,،]/)[0].trim() || autoKw(id);
+  box.innerHTML = head + `${t ? `<div class="banner err">النشرة اللي فاتت فشلت: ${esc(t.error || "")}</div>` : ""}
+    <div class="small muted">بينشر ملف الفيديو الأصلي من إنستجرام على تيك توك للكل. أي كومنت عليه ياخد رد «ابعتلي الكلمة في الخاص»، واللي يبعت الكلمة في الخاص ياخد اللينك.</div>
+    <div class="field"><div class="label">كلمة الفيديو على تيك توك</div><input type="text" dir="auto" maxlength="40" data-ttword placeholder="مثلاً FreeLLMAPI"></div>
+    <div class="field"><div class="label">الكابشن على تيك توك<small data-ttcount></small></div><textarea dir="auto" maxlength="2200" rows="6" data-ttcap></textarea></div>
+    <label class="switch"><input type="checkbox" data-ttok> راجعت الفيديو والكابشن، وموافق ينزل على تيك توك للكل</label>
+    <div class="row wrap"><button class="btn primary" data-ttpub>انشر على تيك توك</button></div><div class="small" data-ttout></div>`;
+  const wi = $("[data-ttword]", box), ci = $("[data-ttcap]", box), cnt = () => { $("[data-ttcount]", box).textContent = ci.value.length + " / 2200"; };
+  let edited = false;
+  wi.value = word0; ci.value = ttCaption(media.caption || "", word0); cnt();
+  wi.addEventListener("input", () => { if (!edited) ci.value = ttCaption(media.caption || "", wi.value.trim()); cnt(); });
+  ci.addEventListener("input", () => { edited = true; cnt(); });
+  $("[data-ttpub]", box).addEventListener("click", async () => {
+    const out = $("[data-ttout]", box), btn = $("[data-ttpub]", box);
+    if (!$("[data-ttok]", box).checked) { out.innerHTML = '<span class="msg err">علّم إنك راجعت الفيديو والكابشن الأول.</span>'; return; }
+    if (!wi.value.trim()) { out.innerHTML = '<span class="msg err">اكتب كلمة الفيديو.</span>'; return; }
+    btn.disabled = true; btn.textContent = "بينشر…"; out.textContent = "";
+    try {
+      const r = await api("/api/admin?action=tiktok-publish&id=" + id, { method: "POST", body: JSON.stringify({ caption: ci.value, word: wi.value.trim(), confirm: true }) });
+      setServerTiktok(id, r.tiktok); renderTiktok(); renderVideos();
+    } catch (err) { out.innerHTML = `<span class="msg err">${esc(err.message)}</span>`; btn.disabled = false; btn.textContent = "انشر على تيك توك"; }
+  });
 }
 function refreshEditor() {
   if (!EDIT) return;
