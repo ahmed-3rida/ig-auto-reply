@@ -68,6 +68,7 @@ globalThis.fetch = async (url, init = {}) => {
   const sm = path.match(/^\/v1\/inbox\/conversations\/(\w+)\/messages$/);
   if (sm && method === "POST") { Z.sent.push({ conv: sm[1], ...body }); return Response.json({ success: true }); }
   const pr = path.match(/^\/v1\/inbox\/comments\/(\w+)\/(\w+)\/private-reply$/);
+  if (pr && Z.rateLimitPrivateReply) return new Response(JSON.stringify({ message: "Rate limit exceeded" }), { status: 429, headers: { "Content-Type": "application/json", "Retry-After": "60" } });
   if (pr) { Z.privateReplies.push({ postId: pr[1], commentId: pr[2], ...body }); return Response.json({ success: true }); }
   const pub = path.match(/^\/v1\/inbox\/comments\/(\w+)$/);
   if (pub && method === "POST") { Z.publicReplies.push({ postId: pub[1], ...body }); return Response.json({ success: true }); }
@@ -262,6 +263,10 @@ assert(res.skipped === "native-audience-gate" && Z.privateReplies.length === aft
 Z.logs.push({ automationId: a904(), commentId: "CA6", status: "skipped", error: "Audience rule: not_follower", audienceOutcome: "blocked" });
 res = await (await send(cm("A6", "zed", false, "CA6"))).json();
 assert(res.answered === "tap-first", "a confirmed non-follower skipped by Zernio receives the custom first DM");
+res = await (await send(cm("A8", "zed", false))).json();
+assert(res.deferred === "rate-limited" && res.recovery === "backfill",
+  "Zernio 429 is acknowledged and sent to backfill instead of causing a webhook retry storm");
+Z.rateLimitPrivateReply = false;
 Z.logs.push({ automationId: a904(), commentId: "CA7", status: "skipped", error: "Already sent DM to this commenter" });
 res = await (await send(cm("A7", "zed", false, "CA7"))).json();
 assert(res.skipped === "zernio-repeat", "someone Zernio already sent the link to is not messaged again");
