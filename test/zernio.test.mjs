@@ -216,8 +216,12 @@ const tap = (payload, { sender = "U9", standby = false, title = "Link" } = {}) =
 const IDM = "https://misterdownloadmanager.com/";
 Z.sent = [];
 res = await (await send(tap(IDM))).json();
-assert(res.answered === "follow-first" && Z.sent[0].buttons.at(-1).payload === "msg:18103119482424684" && Z.sent[0].buttons.at(-1).type === "postback",
-  "old Link tap from a non-follower -> «follow first» with a button that checks again");
+assert(res.answered === "follow-first" && Z.sent[0].buttons.length === 2
+  && Z.sent[0].buttons[0].title === c.settings.profileButton
+  && Z.sent[0].buttons[0].url === "https://www.instagram.com/a/"
+  && Z.sent[0].buttons[1].title === c.settings.gateButton
+  && Z.sent[0].buttons[1].payload === "msg:18103119482424684" && Z.sent[0].buttons[1].type === "postback",
+  "non-follower sees the correct two buttons: open profile + I followed");
 res = await (await send(tap(IDM))).json();
 assert(res.skipped === "double-tap" && Z.sent.length === 1, "a double tap gets one answer");
 assert(Z.sent[0].buttons.at(-1).title === c.settings.gateButton, "the retry button is named «عملت فولو», not like the link");
