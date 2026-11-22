@@ -218,7 +218,7 @@ Z.sent = [];
 res = await (await send(tap(IDM))).json();
 assert(res.answered === "follow-first" && Z.sent[0].buttons.length === 2
   && Z.sent[0].buttons[0].title === c.settings.profileButton
-  && Z.sent[0].buttons[0].url === "https://www.instagram.com/a/"
+  && Z.sent[0].buttons[0].url === "https://www.instagram.com/a7med.salman.3rida/"
   && Z.sent[0].buttons[1].title === c.settings.gateButton
   && Z.sent[0].buttons[1].payload === "msg:18103119482424684" && Z.sent[0].buttons[1].type === "postback",
   "non-follower sees the correct two buttons: open profile + I followed");
