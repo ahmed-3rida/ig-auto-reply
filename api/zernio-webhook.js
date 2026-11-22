@@ -48,6 +48,12 @@ export async function POST(request) {
       if (ev.event === "comment.received") return await onComment(ev, base);
       return ok({ skipped: "event" });
     } catch (e) {
+      if (e.status === 429) {
+        // Do not turn a temporary Zernio rate limit into repeated webhook deliveries.
+        // The panel's backfill action can recover missed comments/DMs after the limit clears.
+        console.warn("zernio-webhook deferred by Zernio rate limit", e.message);
+        return ok({ deferred: "rate-limited", recovery: "backfill" });
+      }
       console.error("zernio-webhook", e.message);
       return Response.json({ error: e.message }, { status: 500 });
     }
