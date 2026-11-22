@@ -89,19 +89,22 @@ export async function firstDm(ev, cfg, id, base) {
   if (!entry.enabled || !usesTapFirst(entry, cfg.settings)) return ok({ skipped: "known" });
   if (!commentMatches(entry, c.text)) return ok({ skipped: "no-keyword" });
 
-  // First-time commenters are normally UNKNOWN to Meta until they have sent a DM.
-  // With audience.whenUnknown="verify", Zernio now sends the follow-gate DM natively.
-  // Let Zernio handle followers and unknowns without polling its logs; only a
-  // commenter Meta positively identifies as a non-follower needs our custom
-  // link-style first DM. This removes several REST calls per ordinary comment.
+  // Known followers are answered directly by Zernio. In link-style gating,
+  // known non-followers AND unknown first-time commenters are skipped by the
+  // native automation and must enter our custom two-step flow below. This is
+  // important: Zernio's native verify gate reuses the video's link-button label
+  // on its not-following reply, instead of showing Open Account + I Followed.
   const follower = c.author?.instagramProfile?.isFollower;
-  if (follower !== false) return ok({ skipped: "native-audience-gate", audience: follower === true ? "follower" : "unknown" });
+  if (follower === true) return ok({ skipped: "native-audience-gate", audience: "follower" });
 
-  // A known non-follower is skipped by the native follower-only automation.
-  // Check the log once so repeatPolicy=once and any unusual race stay safe.
-  const verdict = await zernioVerdict(entry.automationId, c.id);
-  if (verdict === "sent") return ok({ skipped: "zernio-sent" });
-  if (verdict === "repeat") return ok({ skipped: "zernio-repeat" });
+  // The usual "every comment" path needs no automation-log request: audience
+  // filtering guarantees Zernio did not DM unknown/non-followers. Only inspect
+  // logs for the "first comment only" setting to prevent a duplicate first DM.
+  if (cfg.settings.repeat === "once") {
+    const verdict = await zernioVerdict(entry.automationId, c.id);
+    if (verdict === "sent") return ok({ skipped: "zernio-sent" });
+    if (verdict === "repeat") return ok({ skipped: "zernio-repeat" });
+  }
   const key = `${c.author?.id}|${id}`, now = Date.now();
   const repeatMs = cfg.settings.repeat === "once" ? REPEAT_MS : 0;
   if (now - (answered.get(key) ?? 0) < repeatMs) return ok({ skipped: "already-answered" });
