@@ -13,7 +13,7 @@
 import crypto from "node:crypto";
 import { waitUntil } from "@vercel/functions";
 import { loadConfig, saveConfig, findRuleV2 } from "../lib/config.js";
-import { hasZernio, automationLogs } from "../lib/zernio.js";
+import { hasZernio, automationLogs, accountHealth } from "../lib/zernio.js";
 import { automationBody, createOrAdopt, usesTapFirst, commentMatches } from "../lib/sync.js";
 import { answerComment, answerInDm, entryForPayload, baseOf } from "../lib/respond.js";
 import { autoKeywords } from "../lib/autokw.js";
@@ -25,6 +25,32 @@ export const maxDuration = 60; // room to wait out Zernio's rate limit after ans
 const env = (k, d = "") => process.env[k] ?? d;
 const busy = new Set(); // posts being set up right now (per server instance)
 const ok = (extra = {}) => Response.json({ ok: true, ...extra });
+
+// Some Zernio message.received events omit account.username. The follow-gate
+// still needs it to render the "Open account" button; otherwise users only see
+// the retry button and keep receiving "not following" with no route to the profile.
+let cachedIgHandle = "", cachedIgHandleAt = 0;
+async function instagramHandle(ev) {
+  const fromEvent = String(ev.account?.username ?? "").trim().replace(/^@/, "");
+  if (fromEvent) {
+    cachedIgHandle = fromEvent;
+    cachedIgHandleAt = Date.now();
+    return fromEvent;
+  }
+  if (cachedIgHandle && Date.now() - cachedIgHandleAt < 15 * 60_000) return cachedIgHandle;
+  try {
+    const health = await accountHealth();
+    const fromHealth = String(health?.username ?? "").trim().replace(/^@/, "");
+    if (fromHealth) {
+      cachedIgHandle = fromHealth;
+      cachedIgHandleAt = Date.now();
+      return fromHealth;
+    }
+  } catch (e) {
+    console.warn("could not resolve Instagram username for follow gate", e.message);
+  }
+  return cachedIgHandle;
+}
 
 export function validSignature(raw, sig) {
   const secret = env("ZERNIO_WEBHOOK_SECRET");
@@ -200,7 +226,7 @@ export async function oldButton(ev, base = "") {
   const hit = await entryForPayload(cfg, payload);
   if (!hit) return ok({ skipped: "video-off" });
   try {
-    const answered = await answerInDm({ ...hit, cfg, conversationId, user: sender, handle: ev.account?.username, base });
+    const answered = await answerInDm({ ...hit, cfg, conversationId, user: sender, handle: await instagramHandle(ev), base });
     return ok({ answered });
   } catch (e) {
     taps.delete([sender, payload, meta.postbackTitle ?? ""].join("|"));
@@ -222,7 +248,7 @@ export async function dmKeyword(ev, base = "") {
   const sender = String(m.sender?.id ?? ""), conversationId = ev.conversation?.id ?? m.conversationId;
   if (!sender || !conversationId) return ok({ skipped: "no-sender" });
   if (!lock(`${sender}|kw|${hit.id}`)) return ok({ skipped: "double-tap" });
-  const answered = await answerInDm({ ...hit, cfg, conversationId, user: sender, handle: ev.account?.username, base, eventType: "dm" });
+  const answered = await answerInDm({ ...hit, cfg, conversationId, user: sender, handle: await instagramHandle(ev), base, eventType: "dm" });
   return ok({ answered, video: hit.id });
 }
 
