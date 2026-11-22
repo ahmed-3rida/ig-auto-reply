@@ -48,6 +48,12 @@ export async function POST(request) {
       if (ev.event === "comment.received") return await onComment(ev, base);
       return ok({ skipped: "event" });
     } catch (e) {
+      if (e.status === 429) {
+        // Do not turn a temporary Zernio rate limit into repeated webhook deliveries.
+        // The panel's backfill action can recover missed comments/DMs after the limit clears.
+        console.warn("zernio-webhook deferred by Zernio rate limit", e.message);
+        return ok({ deferred: "rate-limited", recovery: "backfill" });
+      }
       console.error("zernio-webhook", e.message);
       return Response.json({ error: e.message }, { status: 500 });
     }
@@ -82,7 +88,17 @@ export async function firstDm(ev, cfg, id, base) {
   const c = ev.comment, entry = cfg.posts[id];
   if (!entry.enabled || !usesTapFirst(entry, cfg.settings)) return ok({ skipped: "known" });
   if (!commentMatches(entry, c.text)) return ok({ skipped: "no-keyword" });
-  // Zernio decides first (its own follow lookup, which can differ from the one in this webhook).
+
+  // First-time commenters are normally UNKNOWN to Meta until they have sent a DM.
+  // With audience.whenUnknown="verify", Zernio now sends the follow-gate DM natively.
+  // Let Zernio handle followers and unknowns without polling its logs; only a
+  // commenter Meta positively identifies as a non-follower needs our custom
+  // link-style first DM. This removes several REST calls per ordinary comment.
+  const follower = c.author?.instagramProfile?.isFollower;
+  if (follower !== false) return ok({ skipped: "native-audience-gate", audience: follower === true ? "follower" : "unknown" });
+
+  // A known non-follower is skipped by the native follower-only automation.
+  // Check the log once so repeatPolicy=once and any unusual race stay safe.
   const verdict = await zernioVerdict(entry.automationId, c.id);
   if (verdict === "sent") return ok({ skipped: "zernio-sent" });
   if (verdict === "repeat") return ok({ skipped: "zernio-repeat" });

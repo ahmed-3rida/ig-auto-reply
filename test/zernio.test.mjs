@@ -68,6 +68,7 @@ globalThis.fetch = async (url, init = {}) => {
   const sm = path.match(/^\/v1\/inbox\/conversations\/(\w+)\/messages$/);
   if (sm && method === "POST") { Z.sent.push({ conv: sm[1], ...body }); return Response.json({ success: true }); }
   const pr = path.match(/^\/v1\/inbox\/comments\/(\w+)\/(\w+)\/private-reply$/);
+  if (pr && Z.rateLimitPrivateReply) return new Response(JSON.stringify({ message: "Rate limit exceeded" }), { status: 429, headers: { "Content-Type": "application/json", "Retry-After": "60" } });
   if (pr) { Z.privateReplies.push({ postId: pr[1], commentId: pr[2], ...body }); return Response.json({ success: true }); }
   const pub = path.match(/^\/v1\/inbox\/comments\/(\w+)$/);
   if (pub && method === "POST") { Z.publicReplies.push({ postId: pub[1], ...body }); return Response.json({ success: true }); }
@@ -105,7 +106,7 @@ const gta = autoFor("17978249321939264");
 assert(gta.isActive && gta.keywords.length === 0 && gta.dmMessage === "اتفضل اللينك 👇" && gta.dmMessageVariations.length === 5 && gta.commentReply === "بعتلك في الخاص 📩",
   "link video -> link text + default public reply");
 assert(gta.buttons[0].type === "url" && gta.buttons[0].url === "https://github.com/mutonby/openshorts"
-  && gta.audience.followerStatus === "follower" && gta.audience.whenUnknown === "skip" && !gta.followGate.notFollowingMessage,
+  && gta.audience.followerStatus === "follower" && gta.audience.whenUnknown === "verify" && gta.followGate.notFollowingMessage,
   "default (link style): Zernio sends the real link only to known followers and stays silent for everyone else");
 assert(gta.commentReplyVariations.length === 2 && gta.commentReplyVariations[1] === "تم الإرسال ✅", "default public reply: each line is a random variation");
 Z.followers.add("U4");
@@ -140,7 +141,7 @@ c.settings.gateStyle = "link"; c.posts["17978249321939264"].gate = true; await s
 const g3 = autoFor("17978249321939264");
 const { tapFirstDm } = await import("../lib/sync.js");
 const t3 = tapFirstDm("17978249321939264", c.posts["17978249321939264"], c.settings);
-assert(g3.audience.whenUnknown === "skip" && isOneOf(t3.dmMessage, "firstDm") && t3.buttons[0].title === "Open 🔗" && t3.buttons[0].type === "postback",
+assert(g3.audience.whenUnknown === "verify" && isOneOf(t3.dmMessage, "firstDm") && t3.buttons[0].title === "Open 🔗" && t3.buttons[0].type === "postback",
   "link style: the webhook's first DM is the link text with the video's own button name (its message waits for the check)");
 c.posts["17978249321939264"].gate = false;
 c.settings.gateStyle = "follow"; await save(c);
@@ -234,7 +235,7 @@ assert((await (await send(tap("zernio_follow_gate:abc", { sender: "U5" }))).json
 c.posts["17978249321939264"].enabled = false; await save(c);
 assert((await (await send(tap("https://github.com/mutonby/openshorts", { sender: "U8" }))).json()).skipped === "video-off", "a video turned off in the panel stops its old buttons too");
 
-// --- link style: comments on panel videos (webhook sends the first DM to anyone not known to follow)
+// --- link style: Zernio handles followers and unknowns; webhook fallback is only for known non-followers
 c.settings.gateStyle = "link";
 c.posts["904"] = { enabled: true, mode: "link", link: "https://z.com", button: "Zed", gate: true, keywords: "zed", matchMode: "word" };
 await save(c);
@@ -244,30 +245,39 @@ const a904 = () => autoFor("904")._id;
 const cm = (author, text, follower, cid = "K" + Math.random().toString().slice(2, 8)) => ({ event: "comment.received", account: { username: "a" },
   comment: { id: cid, platformPostId: "904", postId: null, platform: "instagram", text, isReply: false,
     author: { id: author, instagramProfile: { isFollower: follower } } }, post: { platformPostId: "904", content: "x" } });
-const before = Z.privateReplies.length;
+const before = Z.privateReplies.length, logsBefore = Z.calls.filter((x) => x.includes("/logs")).length;
 res = await (await send(cm("A1", "عايز Zed لو سمحت", null))).json();
-assert(res.answered === "tap-first" && Z.privateReplies.at(-1).buttons[0].type === "postback" && Z.privateReplies.at(-1).buttons[0].payload === "msg:904"
-  && Z.privateReplies.at(-1).buttons[0].title === "Zed" && isOneOf(Z.privateReplies.at(-1).message, "firstDm"), "unknown commenter gets the check DM (its own text) with a tap button");
-assert(Z.publicReplies.at(-1).commentId === Z.privateReplies.at(-1).commentId, "…and the public reply");
+assert(res.skipped === "native-audience-gate" && res.audience === "unknown" && Z.privateReplies.length === before,
+  "unknown first-time commenter is handed to Zernio's native verify gate without a webhook DM");
+assert(Z.calls.filter((x) => x.includes("/logs")).length === logsBefore,
+  "unknown commenters no longer trigger automation-log polling");
 res = await (await send(cm("A2", "zed", false))).json();
-assert(res.answered === "tap-first", "known non-follower also gets the link-looking DM (not «not following»)");
-Z.logs.push({ automationId: a904(), commentId: "CA3", status: "sent" });
+assert(res.answered === "tap-first" && Z.privateReplies.at(-1).buttons[0].type === "postback"
+  && Z.privateReplies.at(-1).buttons[0].payload === "msg:904" && Z.privateReplies.at(-1).buttons[0].title === "Zed"
+  && isOneOf(Z.privateReplies.at(-1).message, "firstDm"), "known non-follower gets the webhook's link-style first DM and follow-check button");
+assert(Z.publicReplies.at(-1).commentId === Z.privateReplies.at(-1).commentId, "…and the public reply");
+const afterFallback = Z.privateReplies.length;
 res = await (await send(cm("A3", "zed", true, "CA3"))).json();
-assert(res.skipped === "zernio-sent" && Z.privateReplies.length === before + 2, "a comment Zernio answered (follower) is left alone");
+assert(res.skipped === "native-audience-gate" && Z.privateReplies.length === afterFallback,
+  "known follower is left to Zernio's native automation without a log lookup");
 Z.logs.push({ automationId: a904(), commentId: "CA6", status: "skipped", error: "Audience rule: not_follower", audienceOutcome: "blocked" });
-res = await (await send(cm("A6", "zed", true, "CA6"))).json();
-assert(res.answered === "tap-first", "webhook says follower but Zernio blocked it (stale info) -> the link-looking DM still goes out");
+res = await (await send(cm("A6", "zed", false, "CA6"))).json();
+assert(res.answered === "tap-first", "a confirmed non-follower skipped by Zernio receives the custom first DM");
+res = await (await send(cm("A8", "zed", false))).json();
+assert(res.deferred === "rate-limited" && res.recovery === "backfill",
+  "Zernio 429 is acknowledged and sent to backfill instead of causing a webhook retry storm");
+Z.rateLimitPrivateReply = false;
 Z.logs.push({ automationId: a904(), commentId: "CA7", status: "skipped", error: "Already sent DM to this commenter" });
-res = await (await send(cm("A7", "zed", true, "CA7"))).json();
+res = await (await send(cm("A7", "zed", false, "CA7"))).json();
 assert(res.skipped === "zernio-repeat", "someone Zernio already sent the link to is not messaged again");
-res = await (await send(cm("A1", "zed again", null))).json();
+res = await (await send(cm("A1", "zed again", false))).json();
 assert(res.answered === "tap-first", "default: the same person commenting again is answered again");
 c.settings.repeat = "once"; await save(c);
 assert(autoFor("904").repeatPolicy.mode === "once", "«first comment only» setting reaches Zernio");
-res = await (await send(cm("A1", "zed third", null))).json();
+res = await (await send(cm("A1", "zed third", false))).json();
 assert(res.skipped === "already-answered", "with «first comment only» the same person gets one DM");
 c.settings.repeat = "every"; await save(c);
-assert(autoFor("904").repeatPolicy.mode === "every_comment", "default repeat policy is every comment");
+assert(autoFor("904").repeatPolicy.mode === "every_comment", "default repeat policy is every_comment");
 res = await (await send(cm("A4", "zedd", null))).json();
 assert(res.skipped === "no-keyword", "trigger words are respected (word match)");
 c.posts["904"].gate = false; await save(c);
