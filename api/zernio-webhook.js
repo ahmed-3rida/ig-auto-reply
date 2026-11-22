@@ -20,6 +20,8 @@ import { autoKeywords } from "../lib/autokw.js";
 import { findTiktokVideo, tiktokDmText, sendTiktokMessage } from "../lib/tiktok.js";
 import { logEvent } from "../lib/events.js";
 
+export const maxDuration = 60; // room to wait out Zernio's rate limit after answering the webhook
+
 const env = (k, d = "") => process.env[k] ?? d;
 const busy = new Set(); // posts being set up right now (per server instance)
 const ok = (extra = {}) => Response.json({ ok: true, ...extra });
@@ -91,6 +93,7 @@ export async function firstDm(ev, cfg, id, base) {
   try {
     await answerComment({ id, entry, cfg, comment: commentOf(c, id), follows: null, base });
   } catch (e) {
+    if (e.status === 429) throw e;   // still rate limited after waiting: an error, not a refusal (see the status page)
     return ok({ skipped: "private-reply-refused", error: e.message });
   }
   return ok({ answered: "tap-first" });
@@ -127,6 +130,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // "sent" | "repeat" | "blocked" | "none" — what the video's Zernio automation did with this comment.
 export async function zernioVerdict(automationId, commentId) {
   if (!automationId) return "none";
+  // Zernio takes a moment to log a comment: wait first instead of asking right away
+  await sleep(timing.waitMs);
   for (let i = 0; i < timing.tries; i++) {
     let log;
     try { log = (await automationLogs(automationId, 20)).find((l) => l.commentId === commentId); } catch { return "none"; }

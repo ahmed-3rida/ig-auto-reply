@@ -26,6 +26,7 @@ globalThis.fetch = async (url, init = {}) => {
   }
   if (u.origin !== "https://zernio.com") throw new Error("unexpected fetch " + url);
   const path = u.pathname.replace(/^\/api/, "");
+  if (Z.limited > 0 && path.endsWith("/messages") && method === "POST") { Z.limited--; return new Response(JSON.stringify({ error: "Rate limit exceeded. Please retry after 2 seconds." }), { status: 429, headers: { "retry-after": "2" } }); }
   if (path === "/v1/accounts") {
     const p = u.searchParams.get("platform");
     if (p === "tiktok") return Response.json({ accounts: [{ _id: TT, platform: "tiktok", username: "a7med.salman.3rida", profileId: { _id: PROF } }] });
@@ -112,6 +113,12 @@ a = await dm("ازيك");
 assert(a.skipped === "no-keyword" && Z.sent.length === n, "no word -> no answer");
 a = await dm("FreeLLMAPI", { direction: "outgoing" });
 assert(a.skipped === "outgoing", "own messages ignored");
+
+// Zernio's rate limit: wait and try again instead of dropping the message
+(await import("../lib/zernio.js")).rateLimit.scale = 0;
+Z.limited = 2; const before = Z.sent.length;
+a = await dm("FreeLLMAPI");
+assert(a.answered === "tiktok" && Z.sent.length === before + 1 && Z.limited === 0, "429 from Zernio retried, message still sent");
 
 // matching helpers
 const cfg = cleanConfig({ settings: {}, posts: { "1": { enabled: true, link: "https://a.b", keywords: "IDM" }, "2": { enabled: true, link: "https://c.d" }, "3": { enabled: false, link: "https://e.f", keywords: "OFF" } } });

@@ -239,6 +239,7 @@ c.settings.gateStyle = "link";
 c.posts["904"] = { enabled: true, mode: "link", link: "https://z.com", button: "Zed", gate: true, keywords: "zed", matchMode: "word" };
 await save(c);
 hook.timing.tries = 2; hook.timing.waitMs = 1; hook.timing.answerWithinMs = 60_000;
+(await import("../lib/zernio.js")).logCache.ttlMs = 0;
 const a904 = () => autoFor("904")._id;
 const cm = (author, text, follower, cid = "K" + Math.random().toString().slice(2, 8)) => ({ event: "comment.received", account: { username: "a" },
   comment: { id: cid, platformPostId: "904", postId: null, platform: "instagram", text, isReply: false,
