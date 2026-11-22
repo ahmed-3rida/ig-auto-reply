@@ -69,6 +69,7 @@ globalThis.fetch = async (url, init = {}) => {
   if (sm && method === "POST") { Z.sent.push({ conv: sm[1], ...body }); return Response.json({ success: true }); }
   const pr = path.match(/^\/v1\/inbox\/comments\/(\w+)\/(\w+)\/private-reply$/);
   if (pr && Z.rateLimitPrivateReply) return new Response(JSON.stringify({ message: "Rate limit exceeded" }), { status: 429, headers: { "Content-Type": "application/json", "Retry-After": "60" } });
+  if (pr && Z.slowPrivateReply) await new Promise((resolve) => setTimeout(resolve, 30));
   if (pr) { Z.privateReplies.push({ postId: pr[1], commentId: pr[2], ...body }); return Response.json({ success: true }); }
   const pub = path.match(/^\/v1\/inbox\/comments\/(\w+)$/);
   if (pub && method === "POST") { Z.publicReplies.push({ postId: pub[1], ...body }); return Response.json({ success: true }); }
@@ -362,12 +363,14 @@ assert(typeof st.totals.followRate === "number", "stats: follow rate after the c
 
 // --- slow work is finished after answering Zernio (no webhook timeout)
 c.settings.gateStyle = "link"; c.posts["905"].gate = true; c.posts["905"].enabled = true; await save(c);
-hook.timing.answerWithinMs = 1; hook.timing.waitMs = 30;
+hook.timing.answerWithinMs = 1; hook.timing.waitMs = 1;
+Z.slowPrivateReply = true;
 const prSlow = Z.privateReplies.length;
 const slowEv = cm("S1", "five", null, "CS" + (Date.now() % 100000)); slowEv.comment.platformPostId = "905"; slowEv.post.platformPostId = "905";
 res = await (await send(slowEv)).json();
 assert(res.queued === true, "a slow comment answer returns «queued» to Zernio right away");
 await new Promise((r) => setTimeout(r, 300));
+Z.slowPrivateReply = false;
 assert(Z.privateReplies.length === prSlow + 1, "…and the DM still goes out in the background");
 assert((await (await send(dmEv("N7", "five", { metadata: { standby: true } }))).json()).skipped === "standby", "quick answers (standby) are still returned as they are");
 hook.timing.answerWithinMs = 60_000; hook.timing.waitMs = 1;
