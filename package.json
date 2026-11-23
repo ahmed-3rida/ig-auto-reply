@@ -10,6 +10,6 @@
     "@vercel/functions": "3.11.1"
   },
   "scripts": {
-    "test": "node --import ./test/register.mjs test/zernio.test.mjs && node --import ./test/register.mjs test/supabase.test.mjs && node --import ./test/register.mjs test/tiktok.test.mjs"
+    "test": "node --import ./test/register.mjs test/zernio.test.mjs && node --import ./test/register.mjs test/supabase.test.mjs && node --import ./test/register.mjs test/tiktok.test.mjs && node --import ./test/register.mjs test/quota.test.mjs"
   }
 }

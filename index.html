@@ -934,6 +934,7 @@ function buildEditor() {
     if (!CFG.posts[id] || !CFG.posts[id].enabled) { $("[data-bfout]", b).innerHTML = '<span class="msg err">شغّل الرد على الفيديو واحفظ الأول.</span>'; return; }
     runBackfill("/api/admin?action=backfill&id=" + id, bf, $("[data-bfout]", b), (r) =>
       `اترد على <b>${r.answered}</b> (${r.links} لينك، ${r.firsts} زرار تحقق)` +
+      (r.queued ? `<div class="msg">وصلنا لحد الساعة — ${r.queued} كومنت اتحطوا في الانتظار وهيتبعتلهم لوحدهم أول ما يبقى فيه مكان.</div>` : "") +
       `<div class="tiny muted">اترد عليهم قبل كده ${r.alreadyDone} · أقدم من 7 أيام ${r.tooOld} · من غير الكلمة ${r.noKeyword}${r.failed ? ` · فشل ${r.failed}` : ""}</div>`);
   });
   const del = $("[data-delrule]", b);

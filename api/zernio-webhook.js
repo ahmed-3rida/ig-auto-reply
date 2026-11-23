@@ -19,6 +19,7 @@ import { answerComment, answerInDm, entryForPayload, baseOf } from "../lib/respo
 import { autoKeywords } from "../lib/autokw.js";
 import { findTiktokVideo, tiktokDmText, sendTiktokMessage } from "../lib/tiktok.js";
 import { logEvent } from "../lib/events.js";
+import { defer, drain } from "../lib/quota.js";
 
 export const maxDuration = 60; // room to wait out Zernio's rate limit after answering the webhook
 
@@ -61,6 +62,7 @@ export async function POST(request) {
   // Zernio gives a webhook only a few seconds. Quick answers (skips, standby…) are returned as they are; anything
   // slower (waiting for Zernio's verdict, sending the DM) carries on after we've answered 200, so Zernio doesn't
   // time out and send the same event again.
+  waitUntil(drainQueue(base));
   const late = Symbol("late");
   const first = await Promise.race([work, new Promise((r) => setTimeout(() => r(late), timing.answerWithinMs))]);
   if (first !== late) return first;
@@ -82,7 +84,7 @@ async function onComment(ev, base) {
 
 const answered = new Map(); // `${author}|${post}` -> time (per instance), for the «first comment only» setting
 const REPEAT_MS = 24 * 3600 * 1000;
-const commentOf = (c, id) => ({ id: c.id, postId: c.postId || id, authorId: c.author?.id, text: c.text });
+const commentOf = (c, id) => ({ id: c.id, postId: c.postId || id, authorId: c.author?.id, text: c.text, at: c.createdAt });
 
 export async function firstDm(ev, cfg, id, base) {
   const c = ev.comment, entry = cfg.posts[id];
@@ -112,6 +114,7 @@ export async function firstDm(ev, cfg, id, base) {
   try {
     await answerComment({ id, entry, cfg, comment: commentOf(c, id), follows: null, base });
   } catch (e) {
+    if (e.quotaFull) { await defer({ id, comment: commentOf(c, id) }); return ok({ deferred: "hourly-cap" }); }
     if (e.status === 429) throw e;   // still rate limited after waiting: an error, not a refusal (see the status page)
     return ok({ skipped: "private-reply-refused", error: e.message });
   }
@@ -135,7 +138,8 @@ async function fromRule(ev, cfg, id, base) {
     await saveConfig(cfg);
     if (!commentMatches(entry, c.text)) return ok({ created: auto._id, answered: false });
     const follows = c.author?.instagramProfile?.isFollower ?? null;
-    await answerComment({ id, entry, cfg, comment: commentOf(c, id), follows, base });
+    try { await answerComment({ id, entry, cfg, comment: commentOf(c, id), follows, base }); }
+    catch (e) { if (!e.quotaFull) throw e; await defer({ id, comment: commentOf(c, id) }); return ok({ created: auto._id, deferred: "hourly-cap" }); }
     return ok({ created: auto._id, answered: true });
   } finally {
     busy.delete(id);
@@ -275,4 +279,21 @@ export async function tiktokMessage(ev) {
   }
   await logEvent("dm", hit.id, "tt:" + sender);
   return ok({ answered: "tiktok", video: hit.id });
+}
+
+// Comments queued by the hourly cap go out here, a few at a time, whenever a webhook arrives and there is room.
+let lastDrain = 0;
+export async function drainQueue(base, { force = false } = {}) {
+  if (!force && Date.now() - lastDrain < 30_000) return 0;
+  lastDrain = Date.now();
+  try {
+    const cfg = await loadConfig();
+    if (!cfg.enabled) return 0;
+    return await drain(async (row) => {
+      const entry = cfg.posts[row.media];
+      if (!entry?.enabled) return false;
+      await answerComment({ id: row.media, entry, cfg, comment: { id: row.comment_id, postId: row.post_id, authorId: row.author_id, text: row.text }, follows: null, base });
+      return true;
+    });
+  } catch (e) { console.error("drainQueue", e.message); return 0; }
 }
