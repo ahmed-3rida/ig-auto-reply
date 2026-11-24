@@ -111,14 +111,16 @@ export async function firstDm(ev, cfg, id, base) {
   const repeatMs = cfg.settings.repeat === "once" ? REPEAT_MS : 0;
   if (now - (answered.get(key) ?? 0) < repeatMs) return ok({ skipped: "already-answered" });
   answered.set(key, now);
+  let kind;
   try {
-    await answerComment({ id, entry, cfg, comment: commentOf(c, id), follows: null, base });
+    // a known non-follower gets only a public reply (follow, then comment again); unknown -> the tap-first DM
+    kind = await answerComment({ id, entry, cfg, comment: commentOf(c, id), follows: follower === false ? false : null, base });
   } catch (e) {
     if (e.quotaFull) { await defer({ id, comment: commentOf(c, id) }); return ok({ deferred: e.billing ? "zernio-allowance" : "hourly-cap" }); }
     if (e.status === 429) throw e;   // still rate limited after waiting: an error, not a refusal (see the status page)
     return ok({ skipped: "private-reply-refused", error: e.message });
   }
-  return ok({ answered: "tap-first" });
+  return ok({ answered: kind === "not-follower" ? kind : "tap-first" });
 }
 
 async function fromRule(ev, cfg, id, base) {
