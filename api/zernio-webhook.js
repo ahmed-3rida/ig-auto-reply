@@ -14,7 +14,7 @@ import crypto from "node:crypto";
 import { waitUntil } from "@vercel/functions";
 import { loadConfig, saveConfig, findRuleV2 } from "../lib/config.js";
 import { hasZernio, automationLogs } from "../lib/zernio.js";
-import { automationBody, createOrAdopt, usesTapFirst, commentMatches } from "../lib/sync.js";
+import { automationBody, createOrAdopt, usesTapFirst, commentMatches, idOf } from "../lib/sync.js";
 import { answerComment, answerInDm, entryForPayload, baseOf } from "../lib/respond.js";
 import { autoKeywords } from "../lib/autokw.js";
 import { findTiktokVideo, tiktokDmText, sendTiktokMessage } from "../lib/tiktok.js";
@@ -134,13 +134,13 @@ async function fromRule(ev, cfg, id, base) {
       caption: String(ev.post?.content ?? "").slice(0, 120), permalink: ev.post?.permalink ?? "", via: "rule:" + rule.match,
     };
     const auto = await createOrAdopt(id, automationBody(id, entry, cfg.settings, { active: true }));
-    cfg.posts[id] = { ...entry, automationId: auto._id ?? "", syncedHash: "" };
+    cfg.posts[id] = { ...entry, automationId: idOf(auto), syncedHash: "" };
     await saveConfig(cfg);
-    if (!commentMatches(entry, c.text)) return ok({ created: auto._id, answered: false });
+    if (!commentMatches(entry, c.text)) return ok({ created: idOf(auto), answered: false });
     const follows = c.author?.instagramProfile?.isFollower ?? null;
     try { await answerComment({ id, entry, cfg, comment: commentOf(c, id), follows, base }); }
-    catch (e) { if (!e.quotaFull) throw e; await defer({ id, comment: commentOf(c, id) }); return ok({ created: auto._id, deferred: "hourly-cap" }); }
-    return ok({ created: auto._id, answered: true });
+    catch (e) { if (!e.quotaFull) throw e; await defer({ id, comment: commentOf(c, id) }); return ok({ created: idOf(auto), deferred: "hourly-cap" }); }
+    return ok({ created: idOf(auto), answered: true });
   } finally {
     busy.delete(id);
   }
