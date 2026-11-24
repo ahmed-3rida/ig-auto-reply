@@ -41,6 +41,7 @@ globalThis.fetch = async (url, init = {}) => {
   const path = u.pathname.replace(/^\/api/, "");
   if (path === "/v1/accounts") return Response.json({ accounts: [{ _id: "b".repeat(24), platform: "instagram", profileId: "c".repeat(24) }] });
   const pr = path.match(/^\/v1\/inbox\/comments\/(\w+)\/(\w+)\/private-reply$/);
+  if (pr && Z.billing) return Response.json({ error: { message: "Monthly free message allowance reached. Add a payment method to keep sending, or wait until next month." } }, { status: 402 });
   if (pr) { Z.private.push(pr[2]); return Response.json({ success: true }); }
   if (/^\/v1\/inbox\/comments\/\w+$/.test(path) && method === "POST") { Z.public.push(body.commentId); return Response.json({ success: true }); }
   if (/\/logs$/.test(path)) return Response.json({ logs: [] });
@@ -66,5 +67,11 @@ for (const e of DB.events) e.at = new Date(Date.now() - 3700e3).toISOString();
 const sent = await hook.drainQueue("https://x", { force: true });
 assert(sent === 1 && Z.private.includes("C3") && DB.pending.length === 0 && Z.public.includes("C3"), "queued comment answered once there is room (DM + public reply)");
 
-const { health } = await import("../lib/health.js");
+// Zernio's monthly free messages used up: the comment waits instead of being lost, and goes out once sending works
+Z.billing = true;
+const d = await comment("C4");
+assert(d.deferred === "zernio-allowance" && DB.pending.some((p) => p.comment_id === "C4") && !Z.private.includes("C4"), "allowance used up -> comment queued, not lost");
+assert(await hook.drainQueue("https://x", { force: true }) === 0 && DB.pending.some((p) => p.comment_id === "C4"), "still blocked -> stays in the queue");
+Z.billing = false;
+assert(await hook.drainQueue("https://x", { force: true }) === 1 && Z.private.includes("C4") && DB.pending.length === 0, "payment added -> queued comment answered");
 console.log("all quota tests passed");

@@ -114,7 +114,7 @@ export async function firstDm(ev, cfg, id, base) {
   try {
     await answerComment({ id, entry, cfg, comment: commentOf(c, id), follows: null, base });
   } catch (e) {
-    if (e.quotaFull) { await defer({ id, comment: commentOf(c, id) }); return ok({ deferred: "hourly-cap" }); }
+    if (e.quotaFull) { await defer({ id, comment: commentOf(c, id) }); return ok({ deferred: e.billing ? "zernio-allowance" : "hourly-cap" }); }
     if (e.status === 429) throw e;   // still rate limited after waiting: an error, not a refusal (see the status page)
     return ok({ skipped: "private-reply-refused", error: e.message });
   }

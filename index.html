@@ -757,6 +757,7 @@ function renderDmVideos() {
 }
 $("#backfillDms").addEventListener("click", () => runBackfill("/api/admin?action=backfill-dms", $("#backfillDms"), $("#dmResult"), (r) =>
   `اترد على <b>${r.answered}</b> (${r.links} لينك، ${r.gated} اتطلب منهم فولو)` +
+  (r.billing ? `<div class="msg err">رسايل Zernio المجانية للشهر خلصت (10,000 رسالة). ضيف وسيلة دفع في Zernio (Billing) وجرب تاني.</div>` : "") +
   `<div class="tiny muted">اتفحص ${r.checked} محادثة · مترد عليها قبل كده ${r.answeredBefore ?? 0} · مفيهاش كلمة فيديو ${r.noKeyword}${r.failed ? ` · فشل ${r.failed}` : ""}</div>`));
 
 async function runBackfill(url, btn, out, line) {
@@ -770,7 +771,7 @@ async function runBackfill(url, btn, out, line) {
       out.innerHTML = line({ ...last, answered: total });
     } while (last.remaining > 0 && last.answered > 0 && rounds < 20);
     const errs = (last.errors || []).map((e) => `<div class="tiny msg err">${esc(e.user || "")}: ${esc(e.error)}</div>`).join("");
-    out.innerHTML = `<div class="msg ok">خلص ✓</div>` + line({ ...last, answered: total }) + errs;
+    out.innerHTML = (last.billing ? "" : `<div class="msg ok">خلص ✓</div>`) + line({ ...last, answered: total }) + errs;
   } catch (err) { out.innerHTML = `<span class="msg err">${esc(err.message)}</span>`; }
   btn.disabled = false; btn.textContent = label;
 }
@@ -934,7 +935,8 @@ function buildEditor() {
     if (!CFG.posts[id] || !CFG.posts[id].enabled) { $("[data-bfout]", b).innerHTML = '<span class="msg err">شغّل الرد على الفيديو واحفظ الأول.</span>'; return; }
     runBackfill("/api/admin?action=backfill&id=" + id, bf, $("[data-bfout]", b), (r) =>
       `اترد على <b>${r.answered}</b> (${r.links} لينك، ${r.firsts} زرار تحقق)` +
-      (r.queued ? `<div class="msg">وصلنا لحد الساعة — ${r.queued} كومنت اتحطوا في الانتظار وهيتبعتلهم لوحدهم أول ما يبقى فيه مكان.</div>` : "") +
+      (r.billing ? `<div class="msg err">رسايل Zernio المجانية للشهر خلصت (10,000 رسالة). ضيف وسيلة دفع في Zernio (Billing) — كل 10,000 رسالة زيادة بـ 1$.${r.queued ? ` ${r.queued} كومنت اتحطوا في الانتظار وهيتبعتلهم لوحدهم أول ما الإرسال يرجع.` : ""}</div>`
+        : r.queued ? `<div class="msg">وصلنا لحد الساعة — ${r.queued} كومنت اتحطوا في الانتظار وهيتبعتلهم لوحدهم أول ما يبقى فيه مكان.</div>` : "") +
       `<div class="tiny muted">اترد عليهم قبل كده ${r.alreadyDone} · أقدم من 7 أيام ${r.tooOld} · من غير الكلمة ${r.noKeyword}${r.failed ? ` · فشل ${r.failed}` : ""}</div>`);
   });
   const del = $("[data-delrule]", b);
