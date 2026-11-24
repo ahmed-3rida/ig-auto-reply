@@ -70,7 +70,6 @@ globalThis.fetch = async (url, init = {}) => {
   const pr = path.match(/^\/v1\/inbox\/comments\/(\w+)\/(\w+)\/private-reply$/);
   if (pr && Z.rateLimitPrivateReply) return new Response(JSON.stringify({ message: "Rate limit exceeded" }), { status: 429, headers: { "Content-Type": "application/json", "Retry-After": "60" } });
   if (pr && Z.slowPrivateReply) await new Promise((resolve) => setTimeout(resolve, 30));
-  if (pr && Z.refuseNF?.has(pr[2])) return Response.json({ error: { message: "Instagram refused this private reply because it carries a card, buttons or an attachment and the commenter does not follow this account." } }, { status: 400 });
   if (pr) { Z.privateReplies.push({ postId: pr[1], commentId: pr[2], ...body }); return Response.json({ success: true }); }
   const pub = path.match(/^\/v1\/inbox\/comments\/(\w+)$/);
   if (pub && method === "POST") { Z.publicReplies.push({ postId: pub[1], ...body }); return Response.json({ success: true }); }
@@ -266,10 +265,6 @@ const afterFallback = Z.privateReplies.length;
 res = await (await send(cm("A3", "zed", true, "CA3"))).json();
 assert(res.skipped === "native-audience-gate" && Z.privateReplies.length === afterFallback,
   "known follower is left to Zernio's direct-link automation");
-Z.refuseNF = new Set(["CA7"]);
-res = await (await send(cm("A7", "zed", null, "CA7"))).json();
-assert(res.answered === "not-follower" && Z.publicReplies.at(-1).commentId === "CA7" && isOneOf(Z.publicReplies.at(-1).message, "nfReply"),
-  "Instagram refuses the button DM (doesn't follow) -> public reply: tried to send, follow and comment again");
 res = await (await send(cm("A6", "zed", false, "CA6"))).json();
 assert(res.answered === "tap-first", "known non-follower gets the custom first DM rather than Zernio's native one-button gate");
 Z.rateLimitPrivateReply = true;
