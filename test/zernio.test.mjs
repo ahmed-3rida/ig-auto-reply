@@ -64,7 +64,7 @@ globalThis.fetch = async (url, init = {}) => {
   const cmm = path.match(/^\/v1\/inbox\/conversations\/(\w+)\/messages$/);
   if (cmm && method === "GET") return Response.json({ messages: Z.convMsgs[cmm[1]] ?? [] });
   const fs = path.match(/^\/v1\/accounts\/\w+\/follow-status\/(\w+)$/);
-  if (fs) return Response.json({ userId: fs[1], isFollower: Z.unknown?.has(fs[1]) ? null : Z.followers.has(fs[1]), refreshed: u.searchParams.get("refresh") === "true" });
+  if (fs) return Response.json({ userId: fs[1], isFollower: Z.followers.has(fs[1]), refreshed: u.searchParams.get("refresh") === "true" });
   const sm = path.match(/^\/v1\/inbox\/conversations\/(\w+)\/messages$/);
   if (sm && method === "POST") { Z.sent.push({ conv: sm[1], ...body }); return Response.json({ success: true }); }
   const pr = path.match(/^\/v1\/inbox\/comments\/(\w+)\/(\w+)\/private-reply$/);
@@ -203,8 +203,8 @@ d = await getCfg();
 assert(d.config.posts["777"]?.via === "rule:#tool25", "the new video is saved in the panel");
 res = await (await send(ev("777", "تاني", true))).json();
 assert(res.skipped === "known", "later comments are left to the automation");
-res = await (await send(ev("778", "hi", null))).json();
-assert(res.answered && Z.privateReplies.at(-1).buttons.at(-1).payload === "msg:778", "unknown commenter's first comment on a new video gets a button that checks the follow");
+res = await (await send(ev("778", "hi", false))).json();
+assert(res.answered && Z.privateReplies.at(-1).buttons.at(-1).payload === "msg:778", "non-follower's first comment on a new video gets a button that checks the follow");
 const p2 = { ...ev("779", "hi", true) }; p2.post.content = "ريل عادي";
 res = await (await send(p2)).json();
 assert(res.skipped === "no-rule" && !autoFor("779"), "videos without a matching rule are ignored");
@@ -259,23 +259,20 @@ assert(res.answered === "tap-first" && Z.privateReplies.at(-1).buttons[0].type =
 assert(Z.publicReplies.at(-1).commentId === Z.privateReplies.at(-1).commentId, "…and the public reply");
 assert(Z.calls.filter((x) => x.includes("/logs")).length === logsBefore,
   "default every-comment flow does not poll Zernio automation logs");
-const nfBefore = Z.privateReplies.length;
-res = await (await send(cm("A2", "zed", false, "CA2"))).json();
-assert(res.answered === "not-follower" && Z.privateReplies.length === nfBefore && Z.publicReplies.at(-1).commentId === "CA2"
-  && isOneOf(Z.publicReplies.at(-1).message, "nfReply"),
-  "known non-follower: no DM, a public reply asking to follow and comment again");
+res = await (await send(cm("A2", "zed", false))).json();
+assert(res.answered === "tap-first", "known non-follower also gets the custom first DM");
 const afterFallback = Z.privateReplies.length;
 res = await (await send(cm("A3", "zed", true, "CA3"))).json();
 assert(res.skipped === "native-audience-gate" && Z.privateReplies.length === afterFallback,
   "known follower is left to Zernio's direct-link automation");
-res = await (await send(cm("A6", "zed", null, "CA6"))).json();
-assert(res.answered === "tap-first", "unknown follow state gets the custom first DM rather than Zernio's native one-button gate");
+res = await (await send(cm("A6", "zed", false, "CA6"))).json();
+assert(res.answered === "tap-first", "known non-follower gets the custom first DM rather than Zernio's native one-button gate");
 Z.rateLimitPrivateReply = true;
-res = await (await send(cm("A8", "zed", null))).json();
+res = await (await send(cm("A8", "zed", false))).json();
 assert(res.deferred === "rate-limited" && res.recovery === "backfill",
   "Zernio 429 is acknowledged and sent to backfill instead of causing a webhook retry storm");
 Z.rateLimitPrivateReply = false;
-res = await (await send(cm("A1", "zed again", null))).json();
+res = await (await send(cm("A1", "zed again", false))).json();
 assert(res.answered === "tap-first", "default: the same person commenting again is answered again");
 c.settings.repeat = "once"; await save(c);
 assert(autoFor("904").repeatPolicy.mode === "once", "first-comment-only setting reaches Zernio");
@@ -293,7 +290,7 @@ assert(res.skipped === "known", "follow check off: Zernio sends the link to ever
 const ago = (h) => new Date(Date.now() - h * 3600e3).toISOString();
 c.posts["905"] = { enabled: true, mode: "link", link: "https://five.com", button: "Five", gate: true, keywords: "five" };
 await save(c);
-Z.followers.add("F1"); Z.unknown = new Set(["N1"]);
+Z.followers.add("F1");
 Z.postComments["905"] = [
   { id: "B1", message: "five please", createdTime: ago(2), from: { id: "F1", username: "fan" }, replies: [] },                       // follower -> link
   { id: "B2", message: "five", createdTime: ago(3), from: { id: "N1", username: "new" }, replies: [] },                              // unknown -> first DM
@@ -301,20 +298,17 @@ Z.postComments["905"] = [
   { id: "B4", message: "five", createdTime: ago(24 * 8), from: { id: "N3" }, replies: [] },                                         // > 7 days
   { id: "B5", message: "hello", createdTime: ago(1), from: { id: "N4" }, replies: [] },                                             // no keyword
   { id: "B6", message: "five", createdTime: ago(1), from: { id: "N5" }, replies: [] },                                              // Zernio already sent
-  { id: "B8", message: "five", createdTime: ago(1), from: { id: "N6" }, replies: [] },                                              // known non-follower -> public reply only
   { id: "B7", message: "me", createdTime: ago(1), from: { id: "own", isOwner: true }, replies: [] },
 ];
 Z.logs.push({ automationId: autoFor("905")._id, commentId: "B6", status: "sent" });
 const bf = async (qs) => (await admin.POST(req("/api/admin?" + qs, { method: "POST" }))).json();
 const prBefore = Z.privateReplies.length;
 let b = await bf("action=backfill&id=905");
-assert(b.answered === 3 && b.links === 1 && b.firsts === 1 && b.notFollowers === 1 && b.alreadyDone === 2 && b.tooOld === 1 && b.noKeyword === 1 && b.remaining === 0,
+assert(b.answered === 2 && b.links === 1 && b.firsts === 1 && b.alreadyDone === 2 && b.tooOld === 1 && b.noKeyword === 1 && b.remaining === 0,
   "backfill answers only the missed comments (skips answered, too old, no keyword, Zernio-sent)");
 const newPR = Z.privateReplies.slice(prBefore);
 assert(newPR.find((x) => x.commentId === "B1").buttons[0].url.includes("/api/go?m=905&") && newPR.find((x) => x.commentId === "B2").buttons[0].payload === "msg:905",
   "follower gets the (tracked) link, unknown gets the check button");
-assert(!newPR.some((x) => x.commentId === "B8") && isOneOf(Z.publicReplies.find((x) => x.commentId === "B8")?.message, "nfReply"),
-  "known non-follower: no DM, only the «follow and comment again» public reply");
 assert((await bf("action=backfill&id=999")).error, "backfill refuses a video that isn't in the panel");
 
 // --- keyword in DMs
