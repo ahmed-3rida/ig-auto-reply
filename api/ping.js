@@ -1,5 +1,6 @@
 // Public liveness check (no secrets): where the settings are read from, and their shape.
 import { loadConfig, storageState } from "../lib/config.js";
+import { account, hasZernio } from "../lib/zernio.js";
 
 export async function GET() {
   const out = { blobToken: !!process.env.BLOB_READ_WRITE_TOKEN, loaded: null,
@@ -13,6 +14,8 @@ export async function GET() {
   } catch (e) { out.loaded = { error: String(e.message).slice(0, 200) }; }
   const k = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || "";
   out.supabaseKeyKind = !k ? null : k.startsWith("sb_secret_") ? "secret" : k.startsWith("sb_publishable_") ? "publishable (wrong key)" : /^eyJ/.test(k) ? "jwt" : "unknown";
+  // which Zernio workspace the API key reaches: the Instagram account id it sees (not a secret)
+  try { out.zernioAccount = hasZernio() ? (await account()).accountId : null; } catch (e) { out.zernioAccount = "error: " + String(e.message).slice(0, 80); }
   out.source = storageState.source; out.storageError = storageState.error || null;
   return Response.json(out, { headers: { "Cache-Control": "no-store" } });
 }
